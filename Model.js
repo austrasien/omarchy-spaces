@@ -122,30 +122,40 @@ function normalizeAddress(address) {
   return String(address || "").toLowerCase().replace(/^0x/, "")
 }
 
-// Workspace ids to render. `occupied` maps id -> window count for every
-// normal (positive id) workspace Hyprland knows about. `activeIds` are
-// workspaces that must stay visible even when empty (focused / on-screen).
+// Workspace ids to render. `occupied` maps id -> window count. Positive ids
+// follow the usual empty-desk rules. A negative id is the scratchpad; it is
+// pinned first, labeled 0, only while it has windows.
 function workspaceIds(occupied, activeIds, persistent, hideEmpty) {
   var ids = []
+  var specials = []
   function add(id) {
     if (id > 0 && ids.indexOf(id) === -1) ids.push(id)
+  }
+  function addSpecial(id) {
+    if (id < 0 && specials.indexOf(id) === -1) specials.push(id)
   }
 
   if (!hideEmpty) for (var p = 1; p <= persistent; p++) add(p)
   for (var key in occupied) {
     var id = Number(key)
+    if (id < 0) {
+      if (occupied[key] > 0) addSpecial(id)
+      continue
+    }
     if (occupied[key] > 0 || !hideEmpty) add(id)
   }
   for (var a = 0; a < activeIds.length; a++) add(activeIds[a])
 
   ids.sort(function(l, r) { return l - r })
-  return ids
+  specials.sort(function(l, r) { return l - r })
+  return specials.concat(ids)
 }
 
-// Label text for a workspace pill.
+// Label text for a workspace pill. Negative ids (special workspaces) are "0".
 function workspaceLabel(id, focused, style) {
   if (style === "none") return ""
   if (style === "glyph" && focused) return "󱓻"
+  if (id < 0) return "0"
   return id === 10 ? "0" : String(id)
 }
 
@@ -358,8 +368,10 @@ function previewLayout(windows, area, width, height) {
 // Maps window PIDs to agent states. `agents`: { session: { state, pids } }
 // where pids run from the agent up to init. The nearest ancestor that is a
 // window owns the agent, since terminals can be nested in other terminals.
-// When several agents share a window, "waiting" beats "working" beats "done".
-var AGENT_RANK = { waiting: 3, working: 2, done: 1 }
+// When several agents share a window, waiting beats done beats working.
+// Waiting blocks on the user, done means they can pick the conversation
+// back up, and working needs nothing from them.
+var AGENT_RANK = { waiting: 3, done: 2, working: 1 }
 
 function agentStates(agents, windowPids) {
   var out = {}

@@ -29,8 +29,14 @@ test("workspaceIds hideEmpty keeps only occupied and active", () => {
   assert.deepStrictEqual(M.workspaceIds({ 1: 0, 4: 1 }, [2], 5, true), [2, 4])
 })
 
+test("workspaceIds pins the scratchpad first only while it has windows", () => {
+  assert.deepStrictEqual(M.workspaceIds({ "-98": 2, 4: 1 }, [], 6, true), [-98, 4])
+  assert.deepStrictEqual(M.workspaceIds({ "-98": 0, 1: 1 }, [], 6, true), [1])
+})
+
 test("workspaceLabel", () => {
   assert.strictEqual(M.workspaceLabel(10, false, "number"), "0")
+  assert.strictEqual(M.workspaceLabel(-98, false, "number"), "0")
   assert.strictEqual(M.workspaceLabel(3, true, "none"), "")
   assert.notStrictEqual(M.workspaceLabel(3, true, "glyph"), "3")
   assert.strictEqual(M.workspaceLabel(3, false, "glyph"), "3")
@@ -216,7 +222,8 @@ test("agentStates picks the nearest window and the most urgent state", () => {
     b: { state: "waiting", pids: [7, 100] },
     c: { state: "done", pids: [8, 300] },
     d: { state: "idle", pids: [9, 300] },
-    e: { state: "working", pids: [10, 11] }
+    e: { state: "working", pids: [10, 11] },
+    f: { state: "working", pids: [12, 300] }
   }
   assert.deepStrictEqual(M.agentStates(agents, windows), { 100: "waiting", 300: "done" })
 })

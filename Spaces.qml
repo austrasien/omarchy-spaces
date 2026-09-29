@@ -79,6 +79,7 @@ Panel {
   }
 
   readonly property int currentWorkspaceId: {
+    if (root.specialActiveId < 0) return root.specialActiveId
     if (cfg.perMonitor && root.monitor && root.monitor.activeWorkspace) return root.monitor.activeWorkspace.id
     return Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
   }
@@ -87,7 +88,7 @@ Panel {
   property int previousWorkspaceId: -1
   property int lastWorkspaceId: -1
   onCurrentWorkspaceIdChanged: {
-    if (root.lastWorkspaceId > 0 && root.lastWorkspaceId !== root.currentWorkspaceId)
+    if (root.lastWorkspaceId !== -1 && root.lastWorkspaceId !== root.currentWorkspaceId)
       root.previousWorkspaceId = root.lastWorkspaceId
     root.lastWorkspaceId = root.currentWorkspaceId
     if (root.currentWorkspaceId === root.previewWorkspaceId) root.hidePreview()
@@ -126,7 +127,8 @@ Panel {
     var map = ({})
     for (var id in root.workspaceMap) {
       var windows = root.workspaceMap[id].windows
-      for (var i = 0; i < windows.length; i++) map[windows[i].address] = windows[i].pid
+      for (var i = 0; i < windows.length; i++)
+        map[Model.normalizeAddress(windows[i].address)] = windows[i].pid
     }
     return map
   }
@@ -140,9 +142,9 @@ Panel {
 
   function agentStateFor(addresses) {
     var best = ""
-    var rank = { waiting: 3, working: 2, done: 1 }
+    var rank = { waiting: 3, done: 2, working: 1 }
     for (var i = 0; i < addresses.length; i++) {
-      var state = root.agentByPid[root.pidByAddress[addresses[i]]] || ""
+      var state = root.agentByPid[root.pidByAddress[Model.normalizeAddress(addresses[i])]] || ""
       if (state && (!best || rank[state] > rank[best])) best = state
     }
     return best
@@ -158,7 +160,17 @@ Panel {
 
   function activeWindowPid() {
     var active = Hyprland.activeToplevel
-    return active ? (root.pidByAddress[String(active.address)] || 0) : 0
+    if (!active) return 0
+    return root.pidByAddress[Model.normalizeAddress(active.address)] || 0
+  }
+
+  // PIDs of windows on the scratchpad while that desk is the one on screen.
+  function visibleScratchpadPids() {
+    var pids = ({})
+    if (!(root.specialActiveId < 0) || !root.scratchpad || !root.scratchpad.windows) return pids
+    var windows = root.scratchpad.windows
+    for (var i = 0; i < windows.length; i++) if (windows[i].pid) pids[windows[i].pid] = true
+    return pids
   }
 
   function applyAgent(session, state, pidsCsv) {
@@ -172,7 +184,12 @@ Panel {
     if (!reported) return
     var agent = { state: reported, pids: Model.parsePids(pidsCsv) }
     // Finishing in the window you are looking at needs no check mark.
-    if (reported === "done" && root.agentWindowPid(agent) === root.activeWindowPid()) agent.state = "idle"
+    // The scratchpad's windows are on screen together, so a finish there
+    // while that desk is open is already seen.
+    var windowPid = root.agentWindowPid(agent)
+    var scratchpadPids = root.visibleScratchpadPids()
+    if (reported === "done" && windowPid && (windowPid === root.activeWindowPid() || scratchpadPids[windowPid]))
+      agent.state = "idle"
     next[session] = agent
     root.agents = next
   }
@@ -227,15 +244,21 @@ Panel {
     root.agents = Model.pruneDeadAgents(root.agents, Object.keys(alive))
   }
 
-  // Seeing a finished agent's window clears its check mark.
+  // Seeing a finished agent's window clears its check mark. Opening the
+  // scratchpad counts: its windows are not Quickshell toplevels, so focusing
+  // one does not change Hyprland.activeToplevel.
   function acknowledgeAgents() {
     var pid = root.activeWindowPid()
-    if (!pid) return
+    var scratchpadPids = root.visibleScratchpadPids()
+    var looking = false
+    for (var seen in scratchpadPids) looking = true
+    if (!pid && !looking) return
     var changed = false
     var next = ({})
     for (var k in root.agents) {
       var agent = root.agents[k]
-      if (agent.state === "done" && root.agentWindowPid(agent) === pid) {
+      var windowPid = root.agentWindowPid(agent)
+      if (agent.state === "done" && windowPid && (windowPid === pid || scratchpadPids[windowPid])) {
         agent = { state: "idle", pids: agent.pids }
         changed = true
       }
@@ -248,6 +271,8 @@ Panel {
     target: Hyprland
     function onActiveToplevelChanged() { Qt.callLater(root.acknowledgeAgents) }
   }
+
+  onSpecialActiveIdChanged: Qt.callLater(root.acknowledgeAgents)
 
   Process {
     id: agentProbe
@@ -279,8 +304,11 @@ Panel {
 
     for (var i = 0; i < values.length; i++) {
       var ws = values[i]
+      // The scratchpad is added below, from Hyprland, by the name
+      // special:scratchpad. Quickshell does not keep that workspace.
       if (ws.id <= 0) continue
       if (perMonitor && ws.monitor !== root.monitor) continue
+      var id = ws.id
 
       var windows = []
       var toplevels = ws.toplevels.values
@@ -305,9 +333,80 @@ Panel {
         transform: mon.lastIpcObject ? mon.lastIpcObject.transform : 0,
         reserved: mon.lastIpcObject ? mon.lastIpcObject.reserved : null
       }) : null
-      map[ws.id] = { id: ws.id, windows: Model.sortWindows(windows), area: area }
+      map[id] = {
+        id: id,
+        name: String(ws.name || id),
+        windows: Model.sortWindows(windows),
+        area: area
+      }
+    }
+
+    var pad = root.scratchpad
+    if (pad && pad.windows && pad.windows.length > 0 && Number(pad.id) < 0) {
+      var specWindows = []
+      for (var n = 0; n < pad.windows.length; n++) specWindows.push(root.windowFromClient(pad.windows[n]))
+      map[pad.id] = {
+        id: Number(pad.id),
+        name: "special:scratchpad",
+        windows: Model.sortWindows(specWindows),
+        area: null
+      }
     }
     return map
+  }
+
+  // Scratchpad as reported by Hyprland (hyprctl), looked up by name.
+  // Null when that workspace is absent or has no windows.
+  property var scratchpad: null
+  property int specialActiveId: 0
+  property bool specialsPending: false
+
+  function windowFromClient(client) {
+    var activeTop = Hyprland.activeToplevel
+    var activeAddr = activeTop ? String(activeTop.address).toLowerCase().replace(/^0x/, "") : ""
+    var address = String(client.address || "")
+    return {
+      address: address,
+      appId: String(client["class"] || ""),
+      title: String(client.title || ""),
+      focused: activeAddr !== "" && address.toLowerCase().replace(/^0x/, "") === activeAddr,
+      at: client.at && client.at.length === 2 ? [client.at[0], client.at[1]] : null,
+      size: client.size && client.size.length === 2 ? [client.size[0], client.size[1]] : null,
+      floating: client.floating === true,
+      pid: client.pid || 0,
+      toplevel: null
+    }
+  }
+
+  function specialsScriptPath() {
+    var url = String(Qt.resolvedUrl("specials.py"))
+    if (url.slice(0, 7) === "file://") url = url.slice(7)
+    return decodeURIComponent(url)
+  }
+
+  function startSpecialsQuery() {
+    if (specialsQuery.running) {
+      root.specialsPending = true
+      return
+    }
+    var path = root.specialsScriptPath()
+    if (path.slice(0, 1) !== "/")
+      path = "/home/austraz/.config/omarchy/plugins/tornikegomareli.spaces/specials.py"
+    specialsQuery.command = ["python3", path]
+    specialsQuery.running = true
+  }
+
+  function applySpecials(text) {
+    var data = null
+    try { data = JSON.parse(String(text || "null")) } catch (e) { return }
+    if (!data || data.name !== "special:scratchpad" || !(Number(data.id) < 0) || !(data.windows && data.windows.length)) {
+      root.specialActiveId = 0
+      root.scratchpad = null
+      return
+    }
+    root.scratchpad = data
+    root.specialActiveId = data.active === true ? Number(data.id) : 0
+    Qt.callLater(root.acknowledgeAgents)
   }
 
   readonly property var workspaceIds: {
@@ -317,8 +416,32 @@ Panel {
     return Model.workspaceIds(occupied, active, cfg.persistentWorkspaces, cfg.hideEmpty)
   }
 
+  Process {
+    id: specialsQuery
+    stderr: SplitParser { onRead: function(line) { console.log("SPACES specials err", line) } }
+    stdout: StdioCollector {
+      id: specialsOut
+      waitForEnd: true
+      onStreamFinished: root.applySpecials(specialsOut.text)
+    }
+    onExited: function(code) {
+      if (!root.specialsPending) return
+      root.specialsPending = false
+      root.startSpecialsQuery()
+    }
+  }
+
+  Timer {
+    interval: 200
+    running: true
+    repeat: false
+    onTriggered: root.startSpecialsQuery()
+  }
+
   function focusWorkspace(id) {
-    run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
+    var ws = root.workspaceMap[id]
+    var target = ws && ws.name ? ws.name : String(id)
+    run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + target + "\" })"))
   }
 
   function focusWindow(address) {
@@ -335,7 +458,7 @@ Panel {
 
   function clickWorkspace(id) {
     if (id === root.currentWorkspaceId) {
-      if (root.cfg.activeClick === "previous" && root.previousWorkspaceId > 0) focusWorkspace(root.previousWorkspaceId)
+      if (root.cfg.activeClick === "previous" && root.previousWorkspaceId !== -1) focusWorkspace(root.previousWorkspaceId)
       return
     }
     focusWorkspace(id)
@@ -384,10 +507,18 @@ Panel {
       case "closewindow":
         root.setUrgent(event.data, false)
         refreshDebounce.restart()
+        scratchpadRefresh.restart()
         break
       case "openwindow":
       case "movewindow":
       case "movewindowv2":
+      case "createworkspacev2":
+      case "destroyworkspacev2":
+      case "activespecial":
+      case "activespecialv2":
+        refreshDebounce.restart()
+        scratchpadRefresh.restart()
+        break
       case "changefloatingmode":
       case "windowtitle":
       case "windowtitlev2":
@@ -404,6 +535,14 @@ Panel {
       Hyprland.refreshToplevels()
       revisionBump.restart()
     }
+  }
+
+  // The scratchpad is not in Quickshell's workspace list, so it is read from
+  // Hyprland only when its windows or its visibility can have changed.
+  Timer {
+    id: scratchpadRefresh
+    interval: 120
+    onTriggered: root.startSpecialsQuery()
   }
 
   Timer {
@@ -523,7 +662,7 @@ Panel {
   property bool previewWanted: false
   property string highlightAddress: ""
 
-  readonly property bool previewOpen: previewWanted && previewWorkspaceId > 0 && !root.opened
+  readonly property bool previewOpen: previewWanted && !!root.workspaceMap[previewWorkspaceId] && !root.opened
     && root.cfg.previews && !!root.workspaceMap[previewWorkspaceId]
     && root.workspaceMap[previewWorkspaceId].windows.length > 0
 
@@ -1157,7 +1296,7 @@ Panel {
           anchors.right: previewCount.left
           anchors.rightMargin: Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
-          text: "Workspace " + (root.previewWorkspaceId === 10 ? "0" : root.previewWorkspaceId)
+          text: "Workspace " + Model.workspaceLabel(root.previewWorkspaceId, false, "number")
           color: root.fg
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
