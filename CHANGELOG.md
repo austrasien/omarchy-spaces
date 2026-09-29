@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Agent status: a gold chip on the app icon while the agent works, no spinner.
+  A workspace waiting on you still pulses red. When the agent finishes, that
+  workspace pulses green until you open it.
+
 ## 1.1.0
 
 - Settings are organised into six pages: App icons, Windows, Appearance,

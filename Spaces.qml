@@ -47,6 +47,8 @@ Panel {
   readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
   readonly property color fg: bar ? bar.barForeground : Color.foreground
   readonly property color bg: bar ? bar.background : Color.background
+  // Theme has no success role. Muted green, distinct from accent gold and urgent.
+  readonly property color agentDone: "#5a9e72"
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property int pillThickness: Math.max(16, barSize - Style.space(6))
   readonly property int iconPx: Math.min(cfg.iconSize, pillThickness - Style.space(4))
@@ -92,6 +94,7 @@ Panel {
       root.previousWorkspaceId = root.lastWorkspaceId
     root.lastWorkspaceId = root.currentWorkspaceId
     if (root.currentWorkspaceId === root.previewWorkspaceId) root.hidePreview()
+    Qt.callLater(root.acknowledgeAgents)
   }
 
   // Addresses (normalized) of windows that requested attention and have not
@@ -173,6 +176,19 @@ Panel {
     return pids
   }
 
+  function agentWindowIsInView(windowPid) {
+    if (!windowPid) return false
+    if (windowPid === root.activeWindowPid()) return true
+    var scratchpadPids = root.visibleScratchpadPids()
+    if (scratchpadPids[windowPid]) return true
+    var ws = root.workspaceMap[root.currentWorkspaceId]
+    if (ws && ws.windows) {
+      for (var i = 0; i < ws.windows.length; i++)
+        if (ws.windows[i].pid === windowPid) return true
+    }
+    return false
+  }
+
   function applyAgent(session, state, pidsCsv) {
     var next = ({})
     for (var k in root.agents) if (k !== session) next[k] = root.agents[k]
@@ -183,12 +199,8 @@ Panel {
     var reported = Model.normalizeAgentState(state)
     if (!reported) return
     var agent = { state: reported, pids: Model.parsePids(pidsCsv) }
-    // Finishing in the window you are looking at needs no check mark.
-    // The scratchpad's windows are on screen together, so a finish there
-    // while that desk is open is already seen.
-    var windowPid = root.agentWindowPid(agent)
-    var scratchpadPids = root.visibleScratchpadPids()
-    if (reported === "done" && windowPid && (windowPid === root.activeWindowPid() || scratchpadPids[windowPid]))
+    // Finishing on the desk you are looking at needs no green pulse.
+    if (reported === "done" && root.agentWindowIsInView(root.agentWindowPid(agent)))
       agent.state = "idle"
     next[session] = agent
     root.agents = next
@@ -244,21 +256,15 @@ Panel {
     root.agents = Model.pruneDeadAgents(root.agents, Object.keys(alive))
   }
 
-  // Seeing a finished agent's window clears its check mark. Opening the
-  // scratchpad counts: its windows are not Quickshell toplevels, so focusing
-  // one does not change Hyprland.activeToplevel.
+  // Switching to a finished agent's desk (or focusing its window) clears the
+  // green pulse. Opening the scratchpad counts: its windows are not Quickshell
+  // toplevels, so focusing one does not change Hyprland.activeToplevel.
   function acknowledgeAgents() {
-    var pid = root.activeWindowPid()
-    var scratchpadPids = root.visibleScratchpadPids()
-    var looking = false
-    for (var seen in scratchpadPids) looking = true
-    if (!pid && !looking) return
     var changed = false
     var next = ({})
     for (var k in root.agents) {
       var agent = root.agents[k]
-      var windowPid = root.agentWindowPid(agent)
-      if (agent.state === "done" && windowPid && (windowPid === pid || scratchpadPids[windowPid])) {
+      if (agent.state === "done" && root.agentWindowIsInView(root.agentWindowPid(agent))) {
         agent = { state: "idle", pids: agent.pids }
         changed = true
       }
@@ -323,7 +329,7 @@ Panel {
           at: ipc.at && ipc.at.length === 2 ? [ipc.at[0], ipc.at[1]] : null,
           size: ipc.size && ipc.size.length === 2 ? [ipc.size[0], ipc.size[1]] : null,
           floating: ipc.floating === true,
-          pid: ipc.pid || 0,
+          pid: Number(ipc.pid) || 0,
           toplevel: tl.wayland
         })
       }
@@ -858,6 +864,10 @@ Panel {
             if (root.isUrgent(workspace.windows[i].address)) return true
           return false
         }
+        readonly property bool doneHighlight: {
+          if (active) return false
+          return root.agentStateFor(workspace.windows.map(function(w) { return w.address })) === "done"
+        }
         readonly property var iconData: Model.iconItems(workspace.windows, root.cfg.groupApps, root.cfg.maxIcons)
         readonly property var itemMap: {
           var map = ({})
@@ -904,6 +914,22 @@ Panel {
         }
 
         Rectangle {
+          id: doneGlow
+          anchors.fill: parent
+          radius: root.pillRadius
+          color: root.agentDone
+          opacity: 0
+          visible: pill.doneHighlight
+
+          SequentialAnimation on opacity {
+            running: pill.doneHighlight
+            loops: Animation.Infinite
+            NumberAnimation { from: 0.15; to: 0.55; duration: 700; easing.type: Easing.InOutSine }
+            NumberAnimation { from: 0.55; to: 0.15; duration: 700; easing.type: Easing.InOutSine }
+          }
+        }
+
+        Rectangle {
           anchors.fill: parent
           radius: root.pillRadius
           color: pill.active ? root.activeFill()
@@ -937,6 +963,7 @@ Panel {
           spacing: pill.label !== "" && iconClip.shownExtent > 0 ? Style.space(5) : 0
 
           Text {
+            id: spaceNum
             visible: pill.label !== ""
             text: pill.label
             color: pill.textColor
@@ -1068,11 +1095,12 @@ Panel {
                         border.color: root.bg
                       }
 
-                      // Agent badge: spinner while working, pulse when it
-                      // needs input, check mark when done.
+                      // Agent badge: gold chip while working, pulsing ! when
+                      // it needs input. Done is a green workspace pulse, not
+                      // a check on the icon.
                       Item {
                         id: agentBadge
-                        visible: appIcon.agentState !== "" && appIcon.agentState !== "idle"
+                        visible: appIcon.agentState === "working" || appIcon.agentState === "waiting"
                         anchors.right: parent.right
                         anchors.top: parent.top
                         anchors.rightMargin: -Style.space(3)
@@ -1083,43 +1111,15 @@ Panel {
                         Rectangle {
                           anchors.fill: parent
                           radius: width / 2
-                          color: appIcon.agentState === "done" ? Color.accent
-                            : appIcon.agentState === "waiting" ? (root.bar ? root.bar.urgent : Color.urgent)
-                            : root.bg
-                        }
-
-                        Canvas {
-                          id: spinner
-                          anchors.fill: parent
-                          anchors.margins: 1.5
-                          visible: appIcon.agentState === "working"
-                          onPaint: {
-                            var ctx = getContext("2d")
-                            ctx.reset()
-                            ctx.lineWidth = Math.max(1.5, width * 0.18)
-                            ctx.lineCap = "round"
-                            ctx.strokeStyle = root.fg
-                            ctx.beginPath()
-                            ctx.arc(width / 2, height / 2, width / 2 - ctx.lineWidth / 2, 0, Math.PI * 1.4)
-                            ctx.stroke()
-                          }
-                          Connections {
-                            target: root
-                            function onFgChanged() { spinner.requestPaint() }
-                          }
-                          RotationAnimator on rotation {
-                            running: spinner.visible
-                            from: 0
-                            to: 360
-                            duration: 900
-                            loops: Animation.Infinite
-                          }
+                          color: appIcon.agentState === "waiting"
+                            ? (root.bar ? root.bar.urgent : Color.urgent)
+                            : Color.accent
                         }
 
                         Text {
                           anchors.centerIn: parent
-                          visible: appIcon.agentState === "done" || appIcon.agentState === "waiting"
-                          text: appIcon.agentState === "done" ? "\uf00c" : "!"
+                          visible: appIcon.agentState === "waiting"
+                          text: "!"
                           color: root.bg
                           font.family: root.fontFamily
                           font.pixelSize: Math.round(parent.width * 0.62)
