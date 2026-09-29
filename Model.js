@@ -151,12 +151,13 @@ function workspaceIds(occupied, activeIds, persistent, hideEmpty) {
   return specials.concat(ids)
 }
 
-// Label text for a workspace pill. Negative ids (special workspaces) are "0".
+// Label text for a workspace pill. The scratchpad (negative id) is "0";
+// workspace 10 is "X" so the two never share a digit.
 function workspaceLabel(id, focused, style) {
   if (style === "none") return ""
   if (style === "glyph" && focused) return "󱓻"
   if (id < 0) return "0"
-  return id === 10 ? "0" : String(id)
+  return id === 10 ? "X" : String(id)
 }
 
 // Stable key identifying "the same app" across windows.

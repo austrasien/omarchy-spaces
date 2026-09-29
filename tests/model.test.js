@@ -35,7 +35,7 @@ test("workspaceIds pins the scratchpad first only while it has windows", () => {
 })
 
 test("workspaceLabel", () => {
-  assert.strictEqual(M.workspaceLabel(10, false, "number"), "0")
+  assert.strictEqual(M.workspaceLabel(10, false, "number"), "X")
   assert.strictEqual(M.workspaceLabel(-98, false, "number"), "0")
   assert.strictEqual(M.workspaceLabel(3, true, "none"), "")
   assert.notStrictEqual(M.workspaceLabel(3, true, "glyph"), "3")

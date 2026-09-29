@@ -462,6 +462,18 @@ Panel {
       + " >/dev/null 2>&1 || hyprctl dispatch closewindow " + Util.shellQuote(target))
   }
 
+  // Workspace 10 is "X". The scratchpad (negative id) stays "0".
+  // Model.js is a shared library, so a running shell can keep an older
+  // "10 → 0" mapping; this override wins as soon as the QML reloads.
+  function spaceLabel(id, focused, style) {
+    if (Number(id) === 10) {
+      if (style === "none") return ""
+      if (style === "glyph" && focused) return "󱓻"
+      return "X"
+    }
+    return Model.workspaceLabel(id, focused, style)
+  }
+
   function clickWorkspace(id) {
     if (id === root.currentWorkspaceId) {
       if (root.cfg.activeClick === "previous" && root.previousWorkspaceId !== -1) focusWorkspace(root.previousWorkspaceId)
@@ -876,7 +888,7 @@ Panel {
         }
         readonly property var itemKeys: iconData.items.map(function(item) { return item.key })
         readonly property color textColor: active ? root.activeText() : root.fg
-        readonly property string label: Model.workspaceLabel(workspaceId, active, root.cfg.labelStyle)
+        readonly property string label: root.spaceLabel(workspaceId, active, root.cfg.labelStyle)
         readonly property real pad: Style.space(label === "" ? 3 : root.metrics.pad)
 
         // Appear animation lives on the delegate: positioner add transitions
@@ -1296,7 +1308,7 @@ Panel {
           anchors.right: previewCount.left
           anchors.rightMargin: Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
-          text: "Workspace " + Model.workspaceLabel(root.previewWorkspaceId, false, "number")
+          text: "Workspace " + root.spaceLabel(root.previewWorkspaceId, false, "number")
           color: root.fg
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
