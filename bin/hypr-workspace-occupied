@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Switch to the nearest regular workspace that has a window.
+# left: highest id below the current workspace. right: lowest id above it.
+# Special workspaces (scratchpad) are ignored. No match means do nothing.
+set -euo pipefail
+
+direction="${1:-}"
+case "$direction" in
+  left | right) ;;
+  *)
+    echo "usage: hypr-workspace-occupied left|right" >&2
+    exit 2
+    ;;
+esac
+
+current="$(hyprctl activeworkspace -j | jq -r '.id')"
+if ! [[ "$current" =~ ^[1-9][0-9]*$ ]]; then
+  exit 0
+fi
+
+target="$(hyprctl workspaces -j | jq -r \
+  --argjson current "$current" \
+  --arg direction "$direction" \
+  '
+    [ .[] | select(.id > 0 and .windows > 0 and .id != $current) ]
+    | if $direction == "left" then
+        [ .[] | select(.id < $current) ] | max_by(.id)
+      else
+        [ .[] | select(.id > $current) ] | min_by(.id)
+      end
+    | .id // empty
+  ')"
+
+if [[ -z "$target" ]]; then
+  exit 0
+fi
+
+# Hyprland 0.56 takes Lua here. `hyprctl dispatch workspace N` is no longer valid.
+hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = '${target}' }))" >/dev/null

@@ -87,7 +87,7 @@ omarchy plugin remove tornikegomareli.spaces
 omarchy plugin enable omarchy.workspaces   # bring back the built-in switcher
 ```
 
-If you added the agent hooks or the settings key below, delete those lines from `~/.claude/settings.json` and `~/.config/hypr/bindings.lua`. If you linked the OpenCode plugin, remove the link:
+If you added the agent hooks, the settings key, or the workspace jump keys below, delete those lines from `~/.claude/settings.json` and `~/.config/hypr/bindings.lua`. If you linked the OpenCode plugin, remove the link:
 
 ```sh
 rm ~/.config/opencode/plugins/spaces.js
@@ -108,6 +108,21 @@ rm ~/.config/opencode/plugins/spaces.js
 Settings are organised into App icons, Windows, Appearance, Workspaces, Previews, and Behaviour. Each section fits its controls without an internal scroll area, and changes apply automatically and are saved to `~/.config/omarchy/shell.json`.
 
 Use Tab / Shift+Tab to move through controls and Enter / Space to activate them. On sliders, use Left / Right to adjust by one, or Home / End for the minimum or maximum. Reset to defaults asks for confirmation before resetting all sections.
+
+Super+= opens the first regular workspace with no windows (the scratchpad does not count). Super+Left and Super+Right jump to the nearest workspace that already has a window. If there is none in that direction, nothing happens. On Omarchy these keys used to resize or focus a window, so unbind them first. Add this to `~/.config/hypr/bindings.lua`:
+
+```lua
+hl.unbind("SUPER + code:21")
+o.bind("SUPER + code:21", "First empty workspace", hl.dsp.focus({ workspace = "empty" }))
+
+hl.unbind("SUPER + LEFT")
+hl.unbind("SUPER + RIGHT")
+local spaces = os.getenv("HOME") .. "/.config/omarchy/plugins/tornikegomareli.spaces/bin/hypr-workspace-occupied"
+o.bind("SUPER + LEFT", "Previous workspace with a window", spaces .. " left")
+o.bind("SUPER + RIGHT", "Next workspace with a window", spaces .. " right")
+```
+
+`code:21` is the = key, without Shift. The left and right jumps need `jq`.
 
 To open settings with a key, add this to `~/.config/hypr/bindings.lua`:
 

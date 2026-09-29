@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Super+= opens the lowest regular workspace with no windows. The scratchpad is not a candidate.
+- Super+Left and Super+Right jump to the nearest workspace that already has a window, lower or higher than the current one. If none does, the current workspace stays put.
+
 ## 1.2.0
 
 - Workspace 10 is labeled X. The scratchpad stays 0, so the two no longer share a digit.
