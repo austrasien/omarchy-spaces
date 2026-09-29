@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 
+- Workspace 10 is labeled X. The scratchpad stays 0, so the two no longer share a digit.
+- The scratchpad shows as pill 0 while it has windows.
 - Agent status: a gold chip on the app icon while the agent works, no spinner.
   A workspace waiting on you still pulses red. When the agent finishes, that
   workspace pulses green until you open it.
