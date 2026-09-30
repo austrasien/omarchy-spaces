@@ -47,8 +47,14 @@ Panel {
   readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
   readonly property color fg: bar ? bar.barForeground : Color.foreground
   readonly property color bg: bar ? bar.background : Color.background
-  // Theme has no success role. Muted green, distinct from accent gold and urgent.
-  readonly property color agentDone: "#5a9e72"
+  readonly property bool barTransparent: bar ? bar.transparent : false
+  // Done pulses the theme accent (window-border highlight). Waiting and
+  // Hyprland-urgent share the bar urgent token; a transparent bar only
+  // raises the pulse opacity, so both colours follow the theme.
+  readonly property color agentDone: Color.accent
+  readonly property color pulseUrgent: bar ? bar.urgent : Color.urgent
+  readonly property real pulseLo: root.barTransparent ? 0.40 : 0.15
+  readonly property real pulseHi: root.barTransparent ? 0.90 : 0.55
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property int pillThickness: Math.max(16, barSize - Style.space(6))
   readonly property int iconPx: Math.min(cfg.iconSize, pillThickness - Style.space(4))
@@ -62,7 +68,7 @@ Panel {
   function activeFill() {
     if (cfg.activeStyle === "solid") return root.fg
     if (cfg.activeStyle === "accent") return Color.accent
-    return Util.alpha(root.fg, 0.18)
+    return Util.alpha(root.fg, root.barTransparent ? 0.45 : 0.18)
   }
 
   function activeText() {
@@ -199,7 +205,7 @@ Panel {
     var reported = Model.normalizeAgentState(state)
     if (!reported) return
     var agent = { state: reported, pids: Model.parsePids(pidsCsv) }
-    // Finishing on the desk you are looking at needs no green pulse.
+    // Finishing on the desk you are looking at needs no done pulse.
     if (reported === "done" && root.agentWindowIsInView(root.agentWindowPid(agent)))
       agent.state = "idle"
     next[session] = agent
@@ -257,7 +263,7 @@ Panel {
   }
 
   // Switching to a finished agent's desk (or focusing its window) clears the
-  // green pulse. Opening the scratchpad counts: its windows are not Quickshell
+  // done pulse. Opening the scratchpad counts: its windows are not Quickshell
   // toplevels, so focusing one does not change Hyprland.activeToplevel.
   function acknowledgeAgents() {
     var changed = false
@@ -779,6 +785,42 @@ Panel {
     }
   }
 
+  // Glow behind a workspace pill. Restart when the opacity range changes:
+  // SequentialAnimation from/to are sampled when the run starts, so a live
+  // bind is not enough (a colour edit can otherwise keep the previous pulse).
+  component PulseFill: Rectangle {
+    id: glow
+    property bool active: false
+    property color fill: "transparent"
+
+    anchors.fill: parent
+    radius: root.pillRadius
+    color: fill
+    opacity: 0
+    visible: active
+
+    SequentialAnimation on opacity {
+      id: pulse
+      running: glow.active
+      loops: Animation.Infinite
+      NumberAnimation { from: root.pulseLo; to: root.pulseHi; duration: 700; easing.type: Easing.InOutSine }
+      NumberAnimation { from: root.pulseHi; to: root.pulseLo; duration: 700; easing.type: Easing.InOutSine }
+    }
+
+    function restartPulse() {
+      if (!glow.active) return
+      pulse.restart()
+    }
+
+    onActiveChanged: if (active) Qt.callLater(restartPulse)
+
+    Connections {
+      target: root
+      function onPulseLoChanged() { glow.restartPulse() }
+      function onPulseHiChanged() { glow.restartPulse() }
+    }
+  }
+
   // ------------------------------------------------------------ bar widget
 
   implicitWidth: vertical ? barSize : pillFlow.implicitWidth + trailingGap
@@ -908,45 +950,16 @@ Panel {
         Behavior on implicitWidth { enabled: root.dur > 0; NumberAnimation { duration: root.dur; easing.type: Easing.OutCubic } }
         Behavior on implicitHeight { enabled: root.dur > 0; NumberAnimation { duration: root.dur; easing.type: Easing.OutCubic } }
 
-        // Urgent pulse, under the regular fill so the active style still reads.
-        Rectangle {
-          id: urgentGlow
-          anchors.fill: parent
-          radius: root.pillRadius
-          color: root.bar ? root.bar.urgent : Color.urgent
-          opacity: 0
-          visible: pill.urgent
-
-          SequentialAnimation on opacity {
-            running: pill.urgent
-            loops: Animation.Infinite
-            NumberAnimation { from: 0.15; to: 0.55; duration: 700; easing.type: Easing.InOutSine }
-            NumberAnimation { from: 0.55; to: 0.15; duration: 700; easing.type: Easing.InOutSine }
-          }
-        }
-
-        Rectangle {
-          id: doneGlow
-          anchors.fill: parent
-          radius: root.pillRadius
-          color: root.agentDone
-          opacity: 0
-          visible: pill.doneHighlight
-
-          SequentialAnimation on opacity {
-            running: pill.doneHighlight
-            loops: Animation.Infinite
-            NumberAnimation { from: 0.15; to: 0.55; duration: 700; easing.type: Easing.InOutSine }
-            NumberAnimation { from: 0.55; to: 0.15; duration: 700; easing.type: Easing.InOutSine }
-          }
-        }
+        // Urgent / done pulse, under the regular fill so the active style still reads.
+        PulseFill { active: pill.urgent; fill: root.pulseUrgent }
+        PulseFill { active: pill.doneHighlight; fill: root.agentDone }
 
         Rectangle {
           anchors.fill: parent
           radius: root.pillRadius
           color: pill.active ? root.activeFill()
             : pill.hovered ? Util.alpha(root.fg, 0.12)
-            : pill.occupied ? Util.alpha(root.fg, 0.06)
+            : (pill.occupied && !pill.urgent && !pill.doneHighlight) ? Util.alpha(root.fg, 0.06)
             : "transparent"
           Behavior on color { enabled: root.fastDur > 0; ColorAnimation { duration: root.fastDur } }
         }
@@ -1102,14 +1115,14 @@ Panel {
                         width: Math.max(5, Math.round(root.iconPx * 0.36))
                         height: width
                         radius: width / 2
-                        color: root.bar ? root.bar.urgent : Color.urgent
+                        color: root.pulseUrgent
                         border.width: 1
                         border.color: root.bg
                       }
 
                       // Agent badge: gold chip while working, pulsing ! when
-                      // it needs input. Done is a green workspace pulse, not
-                      // a check on the icon.
+                      // it needs input. Done is a workspace pulse in the
+                      // theme accent, not a check on the icon.
                       Item {
                         id: agentBadge
                         visible: appIcon.agentState === "working" || appIcon.agentState === "waiting"
@@ -1124,7 +1137,7 @@ Panel {
                           anchors.fill: parent
                           radius: width / 2
                           color: appIcon.agentState === "waiting"
-                            ? (root.bar ? root.bar.urgent : Color.urgent)
+                            ? root.pulseUrgent
                             : Color.accent
                         }
 

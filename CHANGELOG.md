@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1
+
+- Agent done pulses the theme accent instead of a fixed green. Waiting and
+  window-urgent share the bar urgent colour; a transparent bar only raises
+  the pulse opacity so both follow the theme.
+- The occupied pill fill no longer sits on top of an urgent or done pulse.
+- Pulse animation restarts when bar transparency (and therefore the opacity
+  range) changes, so a colour edit cannot keep the previous pulse running.
+
 ## 1.3.0
 
 - Super+= opens the lowest regular workspace with no windows. The scratchpad is not a candidate.

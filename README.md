@@ -20,7 +20,7 @@ Previews follow the monitor's orientation, including portrait displays, and shri
 
 ## Know when your agent needs you
 
-Terminals running Claude Code get a gold chip on the app icon while the agent works, and a pulsing `!` when it needs your input. A workspace waiting on you pulses red. When the agent finishes, that workspace pulses green until you open it. If a reporting process dies without sending `end`, the bar clears its live badge after the next process check, normally within a minute.
+Terminals running Claude Code get a gold chip on the app icon while the agent works, and a pulsing `!` when it needs your input. A workspace waiting on you pulses in the theme urgent colour. When the agent finishes, that workspace pulses in the theme accent until you open it. If a reporting process dies without sending `end`, the bar clears its live badge after the next process check, normally within a minute.
 
 <p align="center">
   <img src=".github/assets/film-agent.png" width="100%" alt="A terminal icon on workspace 4 with an orange exclamation badge: the agent needs input" />
@@ -54,7 +54,7 @@ ln -sfn ~/.config/omarchy/plugins/tornikegomareli.spaces/hooks/opencode-plugin.j
         ~/.config/opencode/plugins/spaces.js
 ```
 
-The link points into the installed plugin, so `omarchy plugin update tornikegomareli.spaces` updates the reporter too. Restart OpenCode, run a prompt, and the terminal icon shows a gold chip while it works. The workspace pulses green when it stops, until you open that workspace.
+The link points into the installed plugin, so `omarchy plugin update tornikegomareli.spaces` updates the reporter too. Restart OpenCode, run a prompt, and the terminal icon shows a gold chip while it works. The workspace pulses in the theme accent when it stops, until you open that workspace.
 
 `working` and `done` are reported as OpenCode works. `waiting` needs a permission prompt, so with `--auto` it rarely appears: OpenCode answers its own permission requests in milliseconds, and the plugin waits 1.5s before showing a `!` so a prompt answered instantly never flashes. To see it, run `opencode` without `--auto` and ask it to do something that needs approval.
 
