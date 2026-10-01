@@ -391,10 +391,17 @@ Panel {
     }
   }
 
-  function specialsScriptPath() {
-    var url = String(Qt.resolvedUrl("specials.py"))
+  function pluginFile(name) {
+    var url = String(Qt.resolvedUrl(name))
     if (url.slice(0, 7) === "file://") url = url.slice(7)
-    return decodeURIComponent(url)
+    url = decodeURIComponent(url)
+    if (url.slice(0, 1) !== "/")
+      url = "/home/austraz/.config/omarchy/plugins/tornikegomareli.spaces/" + name
+    return url
+  }
+
+  function specialsScriptPath() {
+    return root.pluginFile("specials.py")
   }
 
   function startSpecialsQuery() {
@@ -402,10 +409,7 @@ Panel {
       root.specialsPending = true
       return
     }
-    var path = root.specialsScriptPath()
-    if (path.slice(0, 1) !== "/")
-      path = "/home/austraz/.config/omarchy/plugins/tornikegomareli.spaces/specials.py"
-    specialsQuery.command = ["python3", path]
+    specialsQuery.command = ["python3", root.specialsScriptPath()]
     specialsQuery.running = true
   }
 
@@ -541,6 +545,7 @@ Panel {
         root.setUrgent(event.data, false)
         refreshDebounce.restart()
         scratchpadRefresh.restart()
+        faviconDebounce.restart()
         break
       case "openwindow":
       case "movewindow":
@@ -549,6 +554,7 @@ Panel {
       case "destroyworkspacev2":
         refreshDebounce.restart()
         scratchpadRefresh.restart()
+        faviconDebounce.restart()
         break
       case "activespecial":
       case "activespecialv2": {
@@ -565,6 +571,7 @@ Panel {
       case "windowtitle":
       case "windowtitlev2":
         refreshDebounce.restart()
+        faviconDebounce.restart()
         break
       }
     }
@@ -599,6 +606,10 @@ Panel {
   property var pendingIconIndex: ({})
   property var iconCache: ({})
   property int iconRevision: 0
+  property var faviconMap: ({})
+  property int faviconRevision: 0
+  property bool faviconPending: false
+  property int faviconMisses: 0
 
   function entryExecText(entry) {
     if (!entry) return ""
@@ -651,6 +662,91 @@ Panel {
     var indexed = root.iconIndex[value]
     if (indexed) return Util.fileUrl(indexed)
     return Quickshell.iconPath(value, true)
+  }
+
+  function startFaviconQuery() {
+    if (faviconQuery.running) {
+      root.faviconPending = true
+      return
+    }
+    faviconQuery.command = ["python3", root.pluginFile("favicons.py")]
+    faviconQuery.running = true
+  }
+
+  function applyFavicons(text) {
+    var data = null
+    try { data = JSON.parse(String(text || "{}")) } catch (e) { data = ({}) }
+    if (!data || typeof data !== "object") data = ({})
+    root.faviconMap = data
+    root.faviconRevision++
+
+    var expected = 0
+    var map = root.workspaceMap
+    for (var id in map) {
+      var windows = map[id].windows || []
+      for (var i = 0; i < windows.length; i++) {
+        if (Model.isBrowserWindow(windows[i].appId)) expected++
+      }
+    }
+    var got = 0
+    for (var key in data) if (data[key] && data[key].source) got++
+    if (got < expected && root.faviconMisses < 3) {
+      root.faviconMisses++
+      faviconRetry.restart()
+    } else {
+      root.faviconMisses = 0
+    }
+  }
+
+  Process {
+    id: faviconQuery
+    stderr: SplitParser { onRead: function(line) { console.log("SPACES favicons err", line) } }
+    stdout: StdioCollector {
+      id: faviconOut
+      waitForEnd: true
+      onStreamFinished: root.applyFavicons(faviconOut.text)
+    }
+    onExited: function() {
+      if (!root.faviconPending) return
+      root.faviconPending = false
+      root.startFaviconQuery()
+    }
+  }
+
+  Timer {
+    id: faviconDebounce
+    interval: 180
+    onTriggered: {
+      root.faviconMisses = 0
+      root.startFaviconQuery()
+    }
+  }
+
+  Timer {
+    id: faviconRetry
+    interval: 2000
+    onTriggered: root.startFaviconQuery()
+  }
+
+  Timer {
+    interval: 400
+    running: true
+    repeat: false
+    onTriggered: root.startFaviconQuery()
+  }
+
+  // Returns { source, name } for a window. Ordinary Brave / Chrome windows
+  // use the current tab's favicon when favicons.py has resolved one.
+  function windowInfo(item) {
+    root.iconRevision
+    root.faviconRevision
+    if (!item) return { source: "", name: "" }
+    if (Model.isBrowserWindow(item.appId)) {
+      var fav = root.faviconMap[Model.normalizeAddress(item.address)]
+      if (fav && fav.source)
+        return { source: root.iconUrl(fav.source), name: fav.name || item.title }
+    }
+    return root.appInfo(item.appId)
   }
 
   // Returns { source, name } for an app id; cached until icons rescan.
@@ -1081,7 +1177,7 @@ Panel {
 
                   required property var modelData
                   readonly property var item: pill.itemMap[modelData] || null
-                  readonly property var info: item ? root.appInfo(item.appId) : ({ source: "", name: "" })
+                  readonly property var info: item ? root.windowInfo(item) : ({ source: "", name: "" })
                   readonly property bool focusedHere: !!item && item.focused && pill.active
                   readonly property string titleText: root.cfg.focusedTitle && focusedHere && !root.vertical
                     ? Model.focusedLabel(item, info.name, root.cfg.titleLength) : ""
@@ -1511,7 +1607,7 @@ Panel {
 
           // App badge in the corner, so small thumbnails stay identifiable.
           Rectangle {
-            readonly property var info: thumb.win ? root.appInfo(thumb.win.appId) : null
+            readonly property var info: thumb.win ? root.windowInfo(thumb.win) : null
             visible: info !== null && thumb.width > 28 && thumb.height > 22
             anchors.left: parent.left
             anchors.bottom: parent.bottom

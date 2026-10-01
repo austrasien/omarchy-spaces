@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.3
+
+- Ordinary Brave / Chromium windows show the current tab's site favicon
+  instead of the browser icon. `--app` webapps still use their desktop file.
+
 ## 1.3.2
 
 - Scratchpad pill 0 stays while Super+` is showing it, even if it has no

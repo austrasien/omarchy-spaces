@@ -278,6 +278,24 @@ function appIdCandidates(appId) {
   return out
 }
 
+// Ordinary browser windows (not --app webapps). Those all share one class,
+// so the bar uses the tab favicon instead of the Brave / Chrome icon.
+var BROWSER_APP_IDS = {
+  "brave-origin": true,
+  "brave-browser": true,
+  "brave-browser-stable": true,
+  "brave": true,
+  "chromium": true,
+  "chromium-browser": true,
+  "google-chrome": true,
+  "google-chrome-stable": true,
+  "helium": true
+}
+
+function isBrowserWindow(appId) {
+  return !!BROWSER_APP_IDS[String(appId || "").toLowerCase()]
+}
+
 // Chromium-family --app windows use classes like
 // "chrome-web.whatsapp.com__-Default" or "brave-app.hey.com__-Profile_1".
 // Returns the host ("web.whatsapp.com") or "" when the class is not one.
@@ -513,7 +531,7 @@ if (typeof module !== "undefined") {
     previewWidth: previewWidth, previewDimensions: previewDimensions, monitorArea: monitorArea, previewLayout: previewLayout, durationFor: durationFor,
     workspaceIds: workspaceIds, workspaceLabel: workspaceLabel, appKey: appKey,
     sortWindows: sortWindows, iconItems: iconItems, truncate: truncate,
-    focusedLabel: focusedLabel, webAppHost: webAppHost, webAppHint: webAppHint,
+    focusedLabel: focusedLabel, isBrowserWindow: isBrowserWindow, webAppHost: webAppHost, webAppHint: webAppHint,
     scoreWebAppExec: scoreWebAppExec, appIdCandidates: appIdCandidates, iconPathScore: iconPathScore,
     iconNameFromPath: iconNameFromPath, stepWorkspace: stepWorkspace, mergedEntry: mergedEntry
   }

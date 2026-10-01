@@ -84,6 +84,13 @@ test("focusedLabel uses app name for single window, title for many", () => {
   assert.strictEqual(M.focusedLabel({ focused: false, count: 1 }, "Foot", 20), "")
 })
 
+test("isBrowserWindow is only ordinary browser windows", () => {
+  assert.strictEqual(M.isBrowserWindow("brave-origin"), true)
+  assert.strictEqual(M.isBrowserWindow("Brave-Origin"), true)
+  assert.strictEqual(M.isBrowserWindow("brave-mail.google.com__mail_u_1_-Default"), false)
+  assert.strictEqual(M.isBrowserWindow("foot"), false)
+})
+
 test("webAppHost parses chromium app classes", () => {
   assert.strictEqual(M.webAppHost("chrome-web.whatsapp.com__-Default"), "web.whatsapp.com")
   assert.strictEqual(M.webAppHost("brave-app.hey.com__-Profile_1"), "app.hey.com")

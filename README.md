@@ -6,7 +6,7 @@
   <img src=".github/assets/film-apps.png" width="100%" alt="The Omarchy bar with Spaces: five workspaces, each showing the app icons open on it" />
 </p>
 
-Spaces is a workspace switcher for the [Omarchy](https://omarchy.org) bar. Each workspace shows the icons of the apps open on it. The active one slides open, and the focused window is highlighted.
+Spaces is a workspace switcher for the [Omarchy](https://omarchy.org) bar. Each workspace shows the icons of the apps open on it. The active one slides open, and the focused window is highlighted. Ordinary Brave or Chromium windows show the current tab's favicon instead of the browser icon.
 
 ## Peek before you jump
 
@@ -184,6 +184,7 @@ From a clone of this repository, link it into Omarchy and run the tests:
 ln -sfn "$PWD" ~/.config/omarchy/plugins/tornikegomareli.spaces
 omarchy plugin enable tornikegomareli.spaces
 node tests/model.test.js
+python3 favicons.py --self-test
 node tests/opencode-plugin.test.js
 bash tests/settings.sh
 # Optional: opens a temporary Wayland window to test the settings gear
