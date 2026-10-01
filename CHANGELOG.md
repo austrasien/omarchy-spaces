@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.2
+
+- Scratchpad pill 0 stays while Super+` is showing it, even if it has no
+  windows, so an empty scratchpad is selected the same way as an empty desk.
+- Chromium / Brave web-app icons match by URL path, so two Gmail accounts
+  keep distinct desktop files instead of sharing the first `mail.google.com`
+  icon.
+- Cursor agent status: `hooks/cursor-hook` reports working / done the same
+  way as Claude Code. It puts `cursor-agent` first in the PID list, so the
+  gold chip survives Spaces' one-minute process check.
+
 ## 1.3.1
 
 - Agent done pulses the theme accent instead of a fixed green. Waiting and

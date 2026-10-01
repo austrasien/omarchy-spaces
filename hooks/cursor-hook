@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+# Tells the Spaces bar widget what a Cursor agent session is doing.
+# Link into ~/.cursor/hooks/ (see README). The IDE and the CLI both
+# read ~/.cursor/hooks.json.
+#
+#   working  a turn is in progress
+#   done     the turn finished
+#   end      the session is gone
+#
+# Spaces treats pids[0] as the live agent process and clears the gold chip
+# if that PID dies. Cursor runs this hook from a short-lived worker, so we
+# put cursor-agent first (then foot, systemd) rather than PPID.
+#
+# Approval (! badge) comes from spaces-cursor-notify, which writes a stamp
+# when Cursor toasts. This hook clears that badge as soon as the agent
+# continues or the session ends.
+
+export PATH="/usr/share/omarchy/bin:/usr/bin:/usr/local/bin:${PATH:-}"
+export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+
+STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/spaces-agent"
+APPROVAL_DIR="$STATE_DIR/approval"
+LAST_DIR="$STATE_DIR/last"
+LOG="${HOME}/.local/state/omarchy/spaces-agent-hook.log"
+LOG_MAX=204800
+
+rotate_log() {
+  local sz
+  [[ -f $LOG ]] || return 0
+  sz=$(stat -c%s "$LOG" 2>/dev/null || echo 0)
+  ((sz > LOG_MAX)) || return 0
+  tail -c $((LOG_MAX / 2)) "$LOG" >"${LOG}.tmp" 2>/dev/null && mv "${LOG}.tmp" "$LOG"
+}
+
+log() {
+  mkdir -p "$(dirname "$LOG")"
+  printf '%s %s\n' "$(date '+%H:%M:%S')" "$*" >>"$LOG" 2>/dev/null || true
+}
+
+safe_id() {
+  local s=$1
+  s=${s//[^A-Za-z0-9._-]/_}
+  printf '%s' "${s:-unknown}"
+}
+
+approval_pending() {
+  local stamps
+  shopt -s nullglob
+  stamps=("$APPROVAL_DIR"/*)
+  ((${#stamps[@]} > 0))
+}
+
+last_is() {
+  local id=$1 want=$2 line f
+  f="$LAST_DIR/$(safe_id "$id")"
+  [[ -f $f ]] || return 1
+  line=$(<"$f")
+  [[ $line == "$want "* || $line == "$want" ]]
+}
+
+# Spaces probes pids[0] every minute and drops working/waiting if that
+# process is gone. Cursor spawns this hook from a short-lived worker, so
+# PPID dies as soon as we return. Keep cursor-agent (or the terminal child)
+# first so the gold chip survives the probe.
+reorder_session_pids() {
+  local csv=$1
+  [[ -n $csv ]] || return 0
+  local IFS=','
+  local -a chain=($csv)
+  unset IFS
+  local i comm pick=""
+  for ((i=${#chain[@]}-1; i>=0; i--)); do
+    comm=$(<"/proc/${chain[i]}/comm" 2>/dev/null) || continue
+    cmd=$(tr '\0' ' ' <"/proc/${chain[i]}/cmdline" 2>/dev/null || true)
+    # Node's /proc/comm is "MainThread"; the wrapper argv still says cursor-agent.
+    if [[ $comm == cursor-agent || $cmd == *cursor-agent* ]]; then
+      pick=${chain[i]}
+      break
+    fi
+  done
+  if [[ -z $pick ]]; then
+    for ((i=${#chain[@]}-1; i>=0; i--)); do
+      comm=$(<"/proc/${chain[i]}/comm" 2>/dev/null) || continue
+      case $comm in
+        foot|kitty|ghostty|alacritty|wezterm|wezterm-gui|xterm|kgx)
+          ((i>0)) && pick=${chain[i-1]}
+          break
+          ;;
+      esac
+    done
+  fi
+  [[ -n $pick ]] || pick=${chain[0]}
+  local out=$pick
+  local pid
+  for pid in "${chain[@]}"; do
+    [[ $pid == "$pick" ]] && continue
+    out+=",$pid"
+  done
+  printf '%s' "$out"
+}
+
+last_probe_alive() {
+  local id=$1 line f first
+  f="$LAST_DIR/$(safe_id "$id")"
+  [[ -f $f ]] || return 1
+  line=$(<"$f")
+  first=${line#* }
+  first=${first%%,*}
+  first=${first%% *}
+  [[ ${first:-0} -gt 1 && -r /proc/$first/stat ]]
+}
+
+remember() {
+  local id=$1 state=$2
+  mkdir -p "$LAST_DIR"
+  printf '%s %s\n' "$state" "$pids" >"$LAST_DIR/$(safe_id "$id")"
+}
+
+forget() {
+  rm -f "$LAST_DIR/$(safe_id "$1")"
+}
+
+rotate_log
+
+input=$(cat 2>/dev/null || true)
+{
+  IFS=$'\t' read -r event session parent subagent
+} < <(jq -r '[
+  (.hook_event_name // .event_name // ""),
+  (.conversation_id // .session_id // .parent_conversation_id // ""),
+  (.parent_conversation_id // ""),
+  (.subagent_id // "")
+] | @tsv' <<<"$input" 2>/dev/null || printf '\t\t\t\n')
+[[ -n $session ]] || session="pid${PPID:-0}"
+
+# Answer the events that expect a decision. allow/continue only: this hook
+# must not change approvals or block a prompt.
+case "$event" in
+  beforeSubmitPrompt)
+    printf '%s\n' '{"continue":true}'
+    ;;
+  preToolUse|beforeShellExecution|beforeMCPExecution)
+    printf '%s\n' '{"permission":"allow"}'
+    ;;
+esac
+
+# Mid-turn tool events: Spaces already shows working, and no approval toast
+# is outstanding. Skip the /proc walk and omarchy-shell — unless the last
+# report's probe PID is already dead, in which case the bar has cleared
+# the chip and we must send working again.
+case "$event" in
+  preToolUse|beforeShellExecution|beforeMCPExecution)
+    if ! approval_pending && last_is "$session" working && last_probe_alive "$session"; then
+      exit 0
+    fi
+    ;;
+esac
+
+pids=""
+pid=${PPID:-0}
+while [[ $pid -gt 1 && -r /proc/$pid/stat ]]; do
+  pids+="${pids:+,}$pid"
+  stat=$(</proc/$pid/stat)
+  stat=${stat##*) }
+  read -r _ pid _ <<<"$stat"
+done
+pids=$(reorder_session_pids "$pids")
+
+report() {
+  local id=$1 state=$2
+  [[ -n $id && -n $state ]] || return 0
+  log "report $state id=$id event=$event pids=$pids"
+  remember "$id" "$state"
+  omarchy-shell tornikegomareli.spaces agent "$id" "$state" "$pids" >/dev/null 2>&1 &
+}
+
+# Drop approval badges whose stamp was written by spaces-cursor-notify.
+end_approval_badges() {
+  local id stamp
+  local IFS=','
+  mkdir -p "$APPROVAL_DIR"
+  for id in $pids; do
+    [[ ${id:-0} -gt 1 ]] || continue
+    stamp="$APPROVAL_DIR/$id"
+    [[ -e $stamp ]] || continue
+    rm -f "$stamp"
+    log "clear-approval id=$id event=$event"
+    omarchy-shell tornikegomareli.spaces agent "cursor-approval-$id" end "$pids" >/dev/null 2>&1 &
+  done
+}
+
+case "$event" in
+  beforeSubmitPrompt|preToolUse|beforeShellExecution|beforeMCPExecution)
+    end_approval_badges
+    report "$session" working
+    ;;
+  subagentStop)
+    # Tool events inside a subagent may use its own id. Drop that id so it
+    # cannot keep the window on "working" after the subagent returns.
+    # Never end the parent: it is still in its turn.
+    if [[ -n $subagent && $subagent != "$parent" ]]; then
+      report "$subagent" end
+      forget "$subagent"
+    fi
+    if [[ -n $session && $session != "$parent" && $session != "$subagent" ]]; then
+      report "$session" end
+      forget "$session"
+    fi
+    if [[ -n $parent ]]; then
+      report "$parent" working
+    fi
+    end_approval_badges
+    ;;
+  stop)
+    end_approval_badges
+    report "$session" done
+    ;;
+  sessionEnd)
+    end_approval_badges
+    report "$session" end
+    forget "$session"
+    ;;
+  *)
+    log "skip event=${event:-empty} session=$session"
+    ;;
+esac
+
+exit 0

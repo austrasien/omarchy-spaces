@@ -36,7 +36,9 @@ active = any(
     ((monitor.get("specialWorkspace") or {}).get("name") == NAME) for monitor in monitors
 )
 
-if pad is None or not isinstance(pad.get("id"), int) or pad["id"] >= 0 or not windows:
+if pad is None or not isinstance(pad.get("id"), int) or pad["id"] >= 0:
+    print("null")
+elif not windows and not active:
     print("null")
 else:
     print(json.dumps({

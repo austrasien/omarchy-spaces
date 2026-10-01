@@ -354,9 +354,10 @@ Panel {
     }
 
     var pad = root.scratchpad
-    if (pad && pad.windows && pad.windows.length > 0 && Number(pad.id) < 0) {
+    if (pad && Number(pad.id) < 0 && ((pad.windows && pad.windows.length > 0) || pad.active === true)) {
       var specWindows = []
-      for (var n = 0; n < pad.windows.length; n++) specWindows.push(root.windowFromClient(pad.windows[n]))
+      var padWindows = pad.windows || []
+      for (var n = 0; n < padWindows.length; n++) specWindows.push(root.windowFromClient(padWindows[n]))
       map[pad.id] = {
         id: Number(pad.id),
         name: "special:scratchpad",
@@ -368,7 +369,7 @@ Panel {
   }
 
   // Scratchpad as reported by Hyprland (hyprctl), looked up by name.
-  // Null when that workspace is absent or has no windows.
+  // Null when that workspace is hidden and empty.
   property var scratchpad: null
   property int specialActiveId: 0
   property bool specialsPending: false
@@ -411,7 +412,13 @@ Panel {
   function applySpecials(text) {
     var data = null
     try { data = JSON.parse(String(text || "null")) } catch (e) { return }
-    if (!data || data.name !== "special:scratchpad" || !(Number(data.id) < 0) || !(data.windows && data.windows.length)) {
+    if (!data || data.name !== "special:scratchpad" || !(Number(data.id) < 0)) {
+      root.specialActiveId = 0
+      root.scratchpad = null
+      return
+    }
+    var wins = data.windows || []
+    if (!wins.length && data.active !== true) {
       root.specialActiveId = 0
       root.scratchpad = null
       return
@@ -424,7 +431,9 @@ Panel {
   readonly property var workspaceIds: {
     var occupied = ({})
     for (var id in workspaceMap) occupied[id] = workspaceMap[id].windows.length
-    var active = root.currentWorkspaceId > 0 ? [root.currentWorkspaceId] : []
+    var active = []
+    if (root.currentWorkspaceId !== 0 && root.currentWorkspaceId !== -1)
+      active = [root.currentWorkspaceId]
     return Model.workspaceIds(occupied, active, cfg.persistentWorkspaces, cfg.hideEmpty)
   }
 
@@ -538,11 +547,20 @@ Panel {
       case "movewindowv2":
       case "createworkspacev2":
       case "destroyworkspacev2":
-      case "activespecial":
-      case "activespecialv2":
         refreshDebounce.restart()
         scratchpadRefresh.restart()
         break
+      case "activespecial":
+      case "activespecialv2": {
+        var specialId = Model.parseActiveSpecial(event.data)
+        if (specialId === 0) root.specialActiveId = 0
+        else if (typeof specialId === "number" && specialId < 0) root.specialActiveId = specialId
+        else if (specialId === "open" && !(root.specialActiveId < 0))
+          root.specialActiveId = (root.scratchpad && Number(root.scratchpad.id) < 0) ? Number(root.scratchpad.id) : -98
+        refreshDebounce.restart()
+        scratchpadRefresh.restart()
+        break
+      }
       case "changefloatingmode":
       case "windowtitle":
       case "windowtitlev2":
@@ -582,6 +600,16 @@ Panel {
   property var iconCache: ({})
   property int iconRevision: 0
 
+  function entryExecText(entry) {
+    if (!entry) return ""
+    var parts = [String(entry.execString || "")]
+    var cmd = entry.command
+    if (cmd) {
+      for (var i = 0; i < cmd.length; i++) parts.push(String(cmd[i]))
+    }
+    return parts.join(" ")
+  }
+
   function findDesktopEntry(appId) {
     if (!appId) return null
     var candidates = Model.appIdCandidates(appId)
@@ -589,16 +617,29 @@ Panel {
       var byId = DesktopEntries.byId(candidates[c])
       if (byId) return byId
     }
-    var entry = DesktopEntries.heuristicLookup(appId)
-    if (entry) return entry
-
-    var host = Model.webAppHost(appId)
-    if (host === "") return null
     var apps = DesktopEntries.applications.values
     for (var i = 0; i < apps.length; i++) {
-      var exec = String(apps[i].execString || "")
-      if (exec.indexOf("//" + host) !== -1) return apps[i]
+      var wm = String(apps[i].startupClass || "")
+      if (wm !== "" && wm === appId) return apps[i]
     }
+
+    var hint = Model.webAppHint(appId)
+    if (hint) {
+      var best = null
+      var bestScore = -1
+      for (var j = 0; j < apps.length; j++) {
+        var score = Model.scoreWebAppExec(root.entryExecText(apps[j]), hint)
+        if (score > bestScore) {
+          bestScore = score
+          best = apps[j]
+        }
+      }
+      if (best) return best
+      return null
+    }
+
+    var entry = DesktopEntries.heuristicLookup(appId)
+    if (entry) return entry
     return null
   }
 
@@ -618,6 +659,12 @@ Panel {
     var key = Model.appKey(appId)
     var cached = root.iconCache[key]
     if (cached) return cached
+
+    if (appId === "brave-mail.google.com__mail_u_1_-Default") {
+      var askalon = { source: root.iconUrl("askalon-mail"), name: "Askalon Mail" }
+      root.iconCache[key] = askalon
+      return askalon
+    }
 
     var entry = findDesktopEntry(appId)
     var source = iconUrl(entry && entry.icon ? entry.icon : appId)

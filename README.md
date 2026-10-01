@@ -58,6 +58,37 @@ The link points into the installed plugin, so `omarchy plugin update tornikegoma
 
 `working` and `done` are reported as OpenCode works. `waiting` needs a permission prompt, so with `--auto` it rarely appears: OpenCode answers its own permission requests in milliseconds, and the plugin waits 1.5s before showing a `!` so a prompt answered instantly never flashes. To see it, run `opencode` without `--auto` and ask it to do something that needs approval.
 
+### Cursor
+
+`hooks/cursor-hook` reports Cursor CLI (and the Cursor IDE) the same way. Cursor runs hooks from a short-lived worker; the reporter puts `cursor-agent` first in the PID list so Spaces does not clear the gold chip when that worker exits.
+
+To turn it on, link it into Cursor's user hooks folder:
+
+```sh
+mkdir -p ~/.cursor/hooks
+ln -sfn ~/.config/omarchy/plugins/tornikegomareli.spaces/hooks/cursor-hook \
+        ~/.cursor/hooks/spaces-agent.sh
+```
+
+Then add it to `~/.cursor/hooks.json`:
+
+```json
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [{ "command": "./hooks/spaces-agent.sh" }],
+    "preToolUse": [{ "command": "./hooks/spaces-agent.sh" }],
+    "beforeShellExecution": [{ "command": "./hooks/spaces-agent.sh" }],
+    "beforeMCPExecution": [{ "command": "./hooks/spaces-agent.sh" }],
+    "subagentStop": [{ "command": "./hooks/spaces-agent.sh" }],
+    "stop": [{ "command": "./hooks/spaces-agent.sh" }],
+    "sessionEnd": [{ "command": "./hooks/spaces-agent.sh" }]
+  }
+}
+```
+
+The link points into the installed plugin, so `omarchy plugin update tornikegomareli.spaces` updates the reporter too. Restart a running `cursor-agent` session after linking. A gold chip shows while the agent works; a pulsing `!` shows when Cursor is waiting for approval and the window is unfocused.
+
 ## Install
 
 ```sh
@@ -69,7 +100,7 @@ Requirements:
 
 - Omarchy 4 with the Quickshell bar (Hyprland 0.56 or newer)
 - `jq` for the agent hook (installed with Omarchy)
-- Claude Code or OpenCode, only for agent status
+- Claude Code, OpenCode, or Cursor, only for agent status
 
 Works with the bar on any edge of the screen. Tested on a single monitor.
 
@@ -87,10 +118,11 @@ omarchy plugin remove tornikegomareli.spaces
 omarchy plugin enable omarchy.workspaces   # bring back the built-in switcher
 ```
 
-If you added the agent hooks, the settings key, or the workspace jump keys below, delete those lines from `~/.claude/settings.json` and `~/.config/hypr/bindings.lua`. If you linked the OpenCode plugin, remove the link:
+If you added the agent hooks, the settings key, or the workspace jump keys below, delete those lines from `~/.claude/settings.json`, `~/.cursor/hooks.json`, and `~/.config/hypr/bindings.lua`. If you linked the OpenCode or Cursor reporter, remove the link:
 
 ```sh
 rm ~/.config/opencode/plugins/spaces.js
+rm ~/.cursor/hooks/spaces-agent.sh
 ```
 
 ## Using it

@@ -34,6 +34,18 @@ test("workspaceIds pins the scratchpad first only while it has windows", () => {
   assert.deepStrictEqual(M.workspaceIds({ "-98": 0, 1: 1 }, [], 6, true), [1])
 })
 
+test("workspaceIds shows empty scratchpad when it is the active desk", () => {
+  assert.deepStrictEqual(M.workspaceIds({ 1: 1 }, [-98], 6, true), [-98, 1])
+})
+
+test("parseActiveSpecial reads Hyprland activespecialv2", () => {
+  assert.strictEqual(M.parseActiveSpecial("-98,special:scratchpad,eDP-1"), -98)
+  assert.strictEqual(M.parseActiveSpecial("activespecialv2>>-98,special:scratchpad,eDP-1"), -98)
+  assert.strictEqual(M.parseActiveSpecial("special:scratchpad,eDP-1"), "open")
+  assert.strictEqual(M.parseActiveSpecial(",,eDP-1"), 0)
+  assert.strictEqual(M.parseActiveSpecial("-99,special:magic,eDP-1"), null)
+})
+
 test("workspaceLabel", () => {
   assert.strictEqual(M.workspaceLabel(10, false, "number"), "X")
   assert.strictEqual(M.workspaceLabel(-98, false, "number"), "0")
@@ -77,6 +89,26 @@ test("webAppHost parses chromium app classes", () => {
   assert.strictEqual(M.webAppHost("brave-app.hey.com__-Profile_1"), "app.hey.com")
   assert.strictEqual(M.webAppHost("chrome-x.com__home-Default"), "x.com")
   assert.strictEqual(M.webAppHost("foot"), "")
+})
+
+test("webAppHint keeps Gmail account path", () => {
+  assert.deepStrictEqual(M.webAppHint("brave-mail.google.com__mail_u_1_-Default"), { host: "mail.google.com", path: "mail/u/1" })
+  assert.deepStrictEqual(M.webAppHint("brave-mail.google.com__-Default"), { host: "mail.google.com", path: "" })
+})
+
+test("scoreWebAppExec prefers the longer Gmail path", () => {
+  const hint = M.webAppHint("brave-mail.google.com__mail_u_1_-Default")
+  const account = 'omarchy-launch-webapp "https://mail.google.com/mail/u/1/"'
+  const perso = "omarchy-launch-webapp https://mail.google.com/"
+  assert.ok(M.scoreWebAppExec(account, hint) > M.scoreWebAppExec(perso, hint))
+  assert.strictEqual(M.scoreWebAppExec(perso, hint), -1)
+  const persoHint = M.webAppHint("brave-mail.google.com__-Default")
+  assert.ok(M.scoreWebAppExec(perso, persoHint) > M.scoreWebAppExec(account, persoHint))
+})
+
+test("appIdCandidates includes desktop file id", () => {
+  const c = M.appIdCandidates("brave-mail.google.com__mail_u_1_-Default")
+  assert.ok(c.indexOf("brave-mail.google.com__mail_u_1_-Default.desktop") !== -1)
 })
 
 test("iconPathScore prefers svg then larger png", () => {
@@ -210,8 +242,12 @@ test("preview settings validate", () => {
 })
 
 test("appIdCandidates adds the last reverse-DNS segment", () => {
-  assert.deepStrictEqual(M.appIdCandidates("dev.tgomareli.logi-kvm-console"), ["dev.tgomareli.logi-kvm-console", "logi-kvm-console"])
-  assert.deepStrictEqual(M.appIdCandidates("Slack"), ["Slack", "slack"])
+  assert.deepStrictEqual(M.appIdCandidates("dev.tgomareli.logi-kvm-console"), [
+    "dev.tgomareli.logi-kvm-console",
+    "dev.tgomareli.logi-kvm-console.desktop",
+    "logi-kvm-console"
+  ])
+  assert.deepStrictEqual(M.appIdCandidates("Slack"), ["Slack", "slack", "Slack.desktop", "slack.desktop"])
   assert.deepStrictEqual(M.appIdCandidates(""), [])
 })
 

@@ -118,13 +118,28 @@ function densityMetrics(density) {
 }
 
 // Hyprland reports addresses with or without the 0x prefix depending on source.
+function parseActiveSpecial(data) {
+  var text = String(data || "")
+  var cut = text.indexOf(">>")
+  if (cut !== -1) text = text.slice(cut + 2)
+  var parts = text.split(",")
+  var head = parts[0] || ""
+  var name = parts[1] || ""
+  var id = Number(head)
+  if (name === "special:scratchpad" && id < 0) return id
+  if (head === "special:scratchpad") return "open"
+  if (!head && !name) return 0
+  if (!head) return 0
+  return null
+}
+
 function normalizeAddress(address) {
   return String(address || "").toLowerCase().replace(/^0x/, "")
 }
 
 // Workspace ids to render. `occupied` maps id -> window count. Positive ids
 // follow the usual empty-desk rules. A negative id is the scratchpad; it is
-// pinned first, labeled 0, only while it has windows.
+// pinned first, labeled 0, while it has windows or is the desk on screen.
 function workspaceIds(occupied, activeIds, persistent, hideEmpty) {
   var ids = []
   var specials = []
@@ -144,7 +159,11 @@ function workspaceIds(occupied, activeIds, persistent, hideEmpty) {
     }
     if (occupied[key] > 0 || !hideEmpty) add(id)
   }
-  for (var a = 0; a < activeIds.length; a++) add(activeIds[a])
+  for (var a = 0; a < activeIds.length; a++) {
+    var aid = Number(activeIds[a])
+    if (aid < 0) addSpecial(aid)
+    else add(aid)
+  }
 
   ids.sort(function(l, r) { return l - r })
   specials.sort(function(l, r) { return l - r })
@@ -249,6 +268,8 @@ function appIdCandidates(appId) {
   var out = [id]
   function add(v) { if (v && out.indexOf(v) === -1) out.push(v) }
   add(id.toLowerCase())
+  add(id + ".desktop")
+  add(id.toLowerCase() + ".desktop")
   var dot = id.lastIndexOf(".")
   if (dot > 0 && dot < id.length - 1) {
     add(id.slice(dot + 1))
@@ -261,8 +282,33 @@ function appIdCandidates(appId) {
 // "chrome-web.whatsapp.com__-Default" or "brave-app.hey.com__-Profile_1".
 // Returns the host ("web.whatsapp.com") or "" when the class is not one.
 function webAppHost(appId) {
-  var m = /^(?:chrome|chromium|brave|msedge|vivaldi|helium|opera)-([^_]+?)(?:__|_).*-(?:Default|Profile_\d+)$/i.exec(String(appId || ""))
-  return m ? m[1] : ""
+  var hint = webAppHint(appId)
+  return hint ? hint.host : ""
+}
+
+// Brave/Chrome --app class → { host, path } so two Gmail accounts are not
+// collapsed onto the first mail.google.com desktop file.
+function webAppHint(appId) {
+  var m = /^(?:chrome|chromium|brave|msedge|vivaldi|helium|opera)-([^_]+?)__(.*?)-(?:Default|Profile_\d+)$/i.exec(String(appId || ""))
+  if (!m) return null
+  var path = String(m[2] || "").replace(/_/g, "/").replace(/^\/+|\/+$/g, "")
+  return { host: m[1], path: path }
+}
+
+function scoreWebAppExec(exec, hint) {
+  if (!hint) return -1
+  var text = String(exec || "")
+  var needle = "//" + hint.host
+  var at = text.indexOf(needle)
+  if (at === -1) return -1
+  var after = text.slice(at + needle.length).replace(/[?"'\s].*$/, "")
+  var execPath = after.replace(/^\/+/, "").replace(/\/+$/, "")
+  if (hint.path) {
+    if (execPath === hint.path || execPath.indexOf(hint.path + "/") === 0)
+      return 1000 + execPath.length
+    return -1
+  }
+  return 100 - Math.min(99, execPath.length)
 }
 
 // Icon candidates scanned from disk: prefer scalable, then the largest raster.
@@ -461,13 +507,14 @@ function mergedEntry(moduleName, current, delta) {
 if (typeof module !== "undefined") {
   module.exports = {
     DEFAULTS: DEFAULTS, resolveSettings: resolveSettings, showsApps: showsApps,
-    densityMetrics: densityMetrics, normalizeAddress: normalizeAddress,
+    densityMetrics: densityMetrics, normalizeAddress: normalizeAddress, parseActiveSpecial: parseActiveSpecial,
     agentStates: agentStates, parsePids: parsePids, normalizeAgentState: normalizeAgentState,
     agentProcessIds: agentProcessIds, pruneDeadAgents: pruneDeadAgents,
     previewWidth: previewWidth, previewDimensions: previewDimensions, monitorArea: monitorArea, previewLayout: previewLayout, durationFor: durationFor,
     workspaceIds: workspaceIds, workspaceLabel: workspaceLabel, appKey: appKey,
     sortWindows: sortWindows, iconItems: iconItems, truncate: truncate,
-    focusedLabel: focusedLabel, webAppHost: webAppHost, appIdCandidates: appIdCandidates, iconPathScore: iconPathScore,
+    focusedLabel: focusedLabel, webAppHost: webAppHost, webAppHint: webAppHint,
+    scoreWebAppExec: scoreWebAppExec, appIdCandidates: appIdCandidates, iconPathScore: iconPathScore,
     iconNameFromPath: iconNameFromPath, stepWorkspace: stepWorkspace, mergedEntry: mergedEntry
   }
 }
