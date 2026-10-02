@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.6
+
+- README documents the Super+Caps Lock bind (`focusAlert`): same filter as
+  the Caps Lock LED, and both `Caps_Lock` and `Multi_key` because Caps is
+  Compose on Omarchy.
+
 ## 1.3.5
 
 - Caps Lock follows the pill pulses. It blinks while a `waiting` desk is
