@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Blink the Caps Lock LED three times. Spaces calls this when an agent (or
+# Bambu, etc.) reports waiting or done. Overlapping calls share one flock so
+# two reporters cannot strobe the key.
+set -euo pipefail
+
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/spaces-caps-blink.lock"
+exec 9>"$LOCK"
+flock -n 9 || exit 0
+
+if [[ -n ${SPACES_CAPS_LED:-} ]]; then
+  device=$SPACES_CAPS_LED
+else
+  shopt -s nullglob
+  leds=(/sys/class/leds/input*::capslock)
+  shopt -u nullglob
+  ((${#leds[@]} > 0)) || exit 0
+  device=$(basename "${leds[0]}")
+fi
+
+led() {
+  brightnessctl -c leds -d "$device" -q set "$1" >/dev/null 2>&1 || true
+}
+
+cleanup() { led 0; }
+trap cleanup EXIT
+
+for _ in 1 2 3; do
+  led 1
+  sleep 0.12
+  led 0
+  sleep 0.10
+done

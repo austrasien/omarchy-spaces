@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.4
+
+- Caps Lock LED blinks three times when an agent (or Bambu, etc.) first
+  reports `waiting` or `done`. Repeats of the same state do not retrigger it.
+
 ## 1.3.3
 
 - Ordinary Brave / Chromium windows show the current tab's site favicon

@@ -195,7 +195,13 @@ Panel {
     return false
   }
 
+  function blinkCapsLock() {
+    Quickshell.execDetached([root.pluginFile("bin/spaces-caps-blink")])
+  }
+
   function applyAgent(session, state, pidsCsv) {
+    var prev = root.agents[session]
+    var prevState = prev ? prev.state : ""
     var next = ({})
     for (var k in root.agents) if (k !== session) next[k] = root.agents[k]
     if (state === "end") {
@@ -210,6 +216,11 @@ Panel {
       agent.state = "idle"
     next[session] = agent
     root.agents = next
+    // Caps Lock blinks on a new waiting/done. idle is an acknowledged done,
+    // so a repeated FINISH (Bambu) must not strobe the key.
+    if (!root.cfg.agentStatus) return
+    if (reported === "waiting" && prevState !== "waiting") root.blinkCapsLock()
+    if (reported === "done" && prevState !== "done" && prevState !== "idle") root.blinkCapsLock()
   }
 
   // A crashed reporter leaves working/waiting behind with no "end". Recheck

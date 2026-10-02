@@ -20,7 +20,7 @@ Previews follow the monitor's orientation, including portrait displays, and shri
 
 ## Know when your agent needs you
 
-Terminals running Claude Code get a gold chip on the app icon while the agent works, and a pulsing `!` when it needs your input. A workspace waiting on you pulses in the theme urgent colour. When the agent finishes, that workspace pulses in the theme accent until you open it. If a reporting process dies without sending `end`, the bar clears its live badge after the next process check, normally within a minute.
+Terminals running Claude Code get a gold chip on the app icon while the agent works, and a pulsing `!` when it needs your input. A workspace waiting on you pulses in the theme urgent colour. When the agent finishes, that workspace pulses in the theme accent until you open it. The Caps Lock LED also blinks three times on the first `waiting` or `done` report (same for Bambu and any other reporter). If a reporting process dies without sending `end`, the bar clears its live badge after the next process check, normally within a minute.
 
 <p align="center">
   <img src=".github/assets/film-agent.png" width="100%" alt="A terminal icon on workspace 4 with an orange exclamation badge: the agent needs input" />
