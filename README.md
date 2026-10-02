@@ -20,7 +20,7 @@ Previews follow the monitor's orientation, including portrait displays, and shri
 
 ## Know when your agent needs you
 
-Terminals running Claude Code get a gold chip on the app icon while the agent works, and a pulsing `!` when it needs your input. A workspace waiting on you pulses in the theme urgent colour. When the agent finishes, that workspace pulses in the theme accent until you open it. The Caps Lock LED also blinks three times on the first `waiting` or `done` report (same for Bambu and any other reporter). If a reporting process dies without sending `end`, the bar clears its live badge after the next process check, normally within a minute.
+Terminals running Claude Code get a gold chip on the app icon while the agent works, and a pulsing `!` when it needs your input. A workspace waiting on you pulses in the theme urgent colour. When the agent finishes, that workspace pulses in the theme accent until you open it. The Caps Lock LED blinks while a waiting workspace is not on screen (same as the red pulse) and stays lit while a finished workspace is not (same as the accent pulse). Waiting wins. Opening that desk drops the pulse and the LED shows whatever is left (same for Bambu and any other reporter). Super+Caps Lock jumps to the smallest desk that LED is signalling (`omarchy-shell tornikegomareli.spaces focusAlert`); it does nothing when the LED is off. If a reporting process dies without sending `end`, the bar clears its live badge after the next process check, normally within a minute.
 
 <p align="center">
   <img src=".github/assets/film-agent.png" width="100%" alt="A terminal icon on workspace 4 with an orange exclamation badge: the agent needs input" />
@@ -87,7 +87,7 @@ Then add it to `~/.cursor/hooks.json`:
 }
 ```
 
-The link points into the installed plugin, so `omarchy plugin update tornikegomareli.spaces` updates the reporter too. Restart a running `cursor-agent` session after linking. A gold chip shows while the agent works; a pulsing `!` shows when Cursor is waiting for approval and the window is unfocused.
+A gold chip shows while the agent works; a pulsing `!` shows when Cursor is waiting for approval (`Waiting for confirmation` / `Waiting for you` in the Foot title, or an unfocused toast). The first-run “allow tools” card uses that title and often no toast.
 
 ## Install
 

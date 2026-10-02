@@ -1,12 +1,35 @@
 #!/usr/bin/env bash
-# Blink the Caps Lock LED three times. Spaces calls this when an agent (or
-# Bambu, etc.) reports waiting or done. Overlapping calls share one flock so
-# two reporters cannot strobe the key.
+# Caps Lock LED for Spaces. One worker holds the flock and follows
+# $XDG_RUNTIME_DIR/spaces-caps-led.want:
+#   blink  pulse until the want file changes
+#   on     stay lit (re-apply: i8042 / Hyprland reset the LED to the
+#          real Caps state, which is off because Caps is Compose)
+#   off    turn off and exit
+# Later on/off/blink calls only write the want file if a worker is live.
 set -euo pipefail
 
-LOCK="${XDG_RUNTIME_DIR:-/tmp}/spaces-caps-blink.lock"
-exec 9>"$LOCK"
-flock -n 9 || exit 0
+CMD=${1:-off}
+case $CMD in
+  on | off | blink | flash) ;;
+  *)
+    echo "usage: spaces-caps-blink on|off|blink" >&2
+    exit 2
+    ;;
+esac
+[[ $CMD == flash ]] && CMD=blink
+
+RUNTIME="${XDG_RUNTIME_DIR:-/tmp}"
+LOCK="$RUNTIME/spaces-caps-blink.lock"
+WANT="$RUNTIME/spaces-caps-led.want"
+
+want_set() { printf '%s\n' "$1" >"$WANT"; }
+want_get() {
+  if [[ -r $WANT ]]; then
+    tr -d '\n' <"$WANT"
+  else
+    printf '%s' off
+  fi
+}
 
 if [[ -n ${SPACES_CAPS_LED:-} ]]; then
   device=$SPACES_CAPS_LED
@@ -19,15 +42,38 @@ else
 fi
 
 led() {
-  brightnessctl -c leds -d "$device" -q set "$1" >/dev/null 2>&1 || true
+  /usr/bin/brightnessctl -c leds -d "$device" -q set "$1" >/dev/null 2>&1 || true
 }
 
-cleanup() { led 0; }
+want_set "$CMD"
+
+exec 9>"$LOCK"
+flock -n 9 || exit 0
+
+cleanup() {
+  case $(want_get) in
+    on | blink) led 1 ;;
+    *) led 0 ;;
+  esac
+}
 trap cleanup EXIT
 
-for _ in 1 2 3; do
-  led 1
-  sleep 0.12
-  led 0
-  sleep 0.10
+while true; do
+  case $(want_get) in
+    blink)
+      led 1
+      sleep 0.35
+      [[ $(want_get) == blink ]] || continue
+      led 0
+      sleep 0.35
+      ;;
+    on)
+      led 1
+      sleep 0.15
+      ;;
+    *)
+      led 0
+      break
+      ;;
+  esac
 done

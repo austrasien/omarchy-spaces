@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.5
+
+- Caps Lock follows the pill pulses. It blinks while a `waiting` desk is
+  not on screen (same as the red pulse) and stays lit while a `done` desk
+  is not (same as the accent pulse). Waiting wins over done. Opening a
+  desk drops that pulse, then the LED shows whatever is left.
+- Cursor “allow tools” / confirmation: Spaces now reads the Foot title
+  (`Waiting for confirmation`) instead of only matching a few toast
+  titles. `preToolUse` no longer clears that badge while the card is up.
+- Super+Caps Lock jumps to the smallest workspace the Caps Lock LED is
+  signalling (`omarchy-shell tornikegomareli.spaces focusAlert`). Does
+  nothing when the LED is off.
+
 ## 1.3.4
 
 - Caps Lock LED blinks three times when an agent (or Bambu, etc.) first

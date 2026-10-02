@@ -195,17 +195,85 @@ Panel {
     return false
   }
 
-  function blinkCapsLock() {
-    Quickshell.execDetached([root.pluginFile("bin/spaces-caps-blink")])
+  // Caps Lock follows the pill pulses: blink while a waiting desk is not
+  // the one on screen (red pulse), stay lit while a done desk is not
+  // (accent pulse). Waiting wins. Visiting a desk drops that pulse, so
+  // the LED re-evaluates whatever is left.
+  function capsLedMode() {
+    if (!root.cfg.agentStatus) return "off"
+    var waiting = false
+    var done = false
+    for (var k in root.agents) {
+      var agent = root.agents[k]
+      if (!agent) continue
+      if (root.agentWindowIsInView(root.agentWindowPid(agent))) continue
+      if (agent.state === "waiting") waiting = true
+      else if (agent.state === "done") done = true
+    }
+    if (waiting) return "blink"
+    if (done) return "on"
+    return "off"
+  }
+
+  function syncCapsLock() {
+    Quickshell.execDetached([root.pluginFile("bin/spaces-caps-blink"), root.capsLedMode()])
+  }
+
+  function workspaceIdForPid(windowPid) {
+    if (!windowPid) return 0
+    if (root.scratchpad && root.scratchpad.windows) {
+      for (var s = 0; s < root.scratchpad.windows.length; s++)
+        if (root.scratchpad.windows[s].pid === windowPid) return root.scratchpad.id || -1
+    }
+    for (var id in root.workspaceMap) {
+      var windows = root.workspaceMap[id].windows || []
+      for (var i = 0; i < windows.length; i++)
+        if (windows[i].pid === windowPid) return Number(id)
+    }
+    return 0
+  }
+
+  // Same filter as the Caps Lock LED: unseen waiting first, then unseen done.
+  // Smallest numbered desk wins; scratchpad (negative id) only if nothing else.
+  function smallerDesk(a, b) {
+    if (!a) return b
+    if (!b) return a
+    if (a > 0 && b > 0) return a < b ? a : b
+    if (a > 0) return a
+    if (b > 0) return b
+    return a > b ? a : b
+  }
+
+  function alertWorkspaceId() {
+    if (!root.cfg.agentStatus) return 0
+    var waiting = 0
+    var done = 0
+    for (var k in root.agents) {
+      var agent = root.agents[k]
+      if (!agent) continue
+      var windowPid = root.agentWindowPid(agent)
+      if (root.agentWindowIsInView(windowPid)) continue
+      var ws = root.workspaceIdForPid(windowPid)
+      if (!ws) continue
+      if (agent.state === "waiting") waiting = root.smallerDesk(waiting, ws)
+      else if (agent.state === "done") done = root.smallerDesk(done, ws)
+    }
+    return waiting || done
+  }
+
+  function focusAlert() {
+    var id = root.alertWorkspaceId()
+    if (!id) return false
+    root.focusWorkspace(id)
+    return true
   }
 
   function applyAgent(session, state, pidsCsv) {
-    var prev = root.agents[session]
-    var prevState = prev ? prev.state : ""
     var next = ({})
     for (var k in root.agents) if (k !== session) next[k] = root.agents[k]
     if (state === "end") {
       root.agents = next
+      root.syncCapsLock()
       return
     }
     var reported = Model.normalizeAgentState(state)
@@ -216,11 +284,7 @@ Panel {
       agent.state = "idle"
     next[session] = agent
     root.agents = next
-    // Caps Lock blinks on a new waiting/done. idle is an acknowledged done,
-    // so a repeated FINISH (Bambu) must not strobe the key.
-    if (!root.cfg.agentStatus) return
-    if (reported === "waiting" && prevState !== "waiting") root.blinkCapsLock()
-    if (reported === "done" && prevState !== "done" && prevState !== "idle") root.blinkCapsLock()
+    root.syncCapsLock()
   }
 
   // A crashed reporter leaves working/waiting behind with no "end". Recheck
@@ -271,6 +335,7 @@ Panel {
     if (!seen || failed) return
     // pruneDeadAgents takes an array; liveAgentPids is a dedup map.
     root.agents = Model.pruneDeadAgents(root.agents, Object.keys(alive))
+    root.syncCapsLock()
   }
 
   // Switching to a finished agent's desk (or focusing its window) clears the
@@ -288,6 +353,7 @@ Panel {
       next[k] = agent
     }
     if (changed) root.agents = next
+    root.syncCapsLock()
   }
 
   Connections {
@@ -475,6 +541,10 @@ Panel {
   }
 
   function focusWorkspace(id) {
+    if (id < 0) {
+      run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"special:scratchpad\" })"))
+      return
+    }
     var ws = root.workspaceMap[id]
     var target = ws && ws.name ? ws.name : String(id)
     run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + target + "\" })"))
@@ -829,6 +899,7 @@ Panel {
     DesktopEntries.applications.values
     iconScan.running = true
     Hyprland.refreshToplevels()
+    Qt.callLater(root.syncCapsLock)
   }
 
   // ------------------------------------------------------------ previews
@@ -931,6 +1002,7 @@ Panel {
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
     function peek(workspace: string): string { return root.peek(workspace) ? "ok" : "empty" }
+    function focusAlert(): string { return root.focusAlert() ? "ok" : "none" }
     function agent(session: string, state: string, pids: string): void {
       // One IPC handler serves every monitor's bar, so relay to all of them.
       var items = root.bar && typeof root.bar.moduleWidgets === "function" ? root.bar.moduleWidgets(root.moduleName) : [root]

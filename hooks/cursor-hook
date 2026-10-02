@@ -144,13 +144,14 @@ case "$event" in
     ;;
 esac
 
-# Mid-turn tool events: Spaces already shows working, and no approval toast
-# is outstanding. Skip the /proc walk and omarchy-shell — unless the last
-# report's probe PID is already dead, in which case the bar has cleared
-# the chip and we must send working again.
+# Mid-turn tool events: Spaces already shows working. Skip the /proc walk
+# unless the last report's probe PID is dead. Do not clear a waiting badge
+# here: Cursor fires preToolUse / beforeShell while the TUI confirmation
+# card is still up (first-run “allow tools”, Run/Reject). Title watcher
+# in spaces-cursor-notify owns that badge.
 case "$event" in
   preToolUse|beforeShellExecution|beforeMCPExecution)
-    if ! approval_pending && last_is "$session" working && last_probe_alive "$session"; then
+    if last_is "$session" working && last_probe_alive "$session"; then
       exit 0
     fi
     ;;
@@ -190,8 +191,11 @@ end_approval_badges() {
 }
 
 case "$event" in
-  beforeSubmitPrompt|preToolUse|beforeShellExecution|beforeMCPExecution)
+  beforeSubmitPrompt)
     end_approval_badges
+    report "$session" working
+    ;;
+  preToolUse|beforeShellExecution|beforeMCPExecution)
     report "$session" working
     ;;
   subagentStop)
