@@ -1,0 +1,444 @@
+#!/usr/bin/env python3
+"""Report Cursor approval waits to the Omarchy Spaces bar.
+
+Two signals, because Cursor has no hook for “blocked on the user”:
+
+- Desktop toasts (only when the agent window is unfocused). Titles are often
+  just “Cursor”; the body is “Cursor is waiting for you”.
+- Foot window titles: `Waiting for confirmation` / `Waiting for you` — that
+  is the first-run “allow tools” card, visible even without a toast.
+
+A finished turn is “Done • …” or “Agent complete”.
+
+Spaces keeps agent badges in memory. After a shell/plugin reload this
+daemon re-pushes live working/waiting claims from last/ and approval
+stamps, same idea as spaces-bambu-notify.
+"""
+
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import dbus
+import dbus.mainloop.glib
+import traceback
+
+from dbus.lowlevel import HANDLER_RESULT_HANDLED
+from gi.repository import GLib
+
+PLUGIN = "tornikegomareli.spaces"
+STATE_DIR = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "spaces-agent"
+APPROVAL_DIR = STATE_DIR / "approval"
+LAST_DIR = STATE_DIR / "last"
+PLUGINS_DIR = Path.home() / ".config/omarchy/plugins"
+SPACES_DIR = PLUGINS_DIR / "tornikegomareli.spaces"
+LIVE_STATES = {"working", "waiting"}
+
+title_waiting_pids = set()
+shell_pid = 0
+spaces_stamp = None
+reannounce_at = 0.0
+WAITING = re.compile(
+    r"(?:"
+    r"Approve(?: pending action| terminal command| file edit| file deletion| MCP tool| command:| \d+ file edits)?"
+    r"|Input needed"
+    r"|Cursor needs your input"
+    r"|Cursor is waiting"
+    r"|waiting for (?:you|confirmation|your)"
+    r"|Waiting for (?:you|confirmation)"
+    r"|Autoriser"
+    r"|Allow (?:this |the )?(?:agent|command|tool)"
+    r")",
+    re.I,
+)
+DONE = re.compile(r"^(?:Done •|Agent complete)")
+TITLE_WAITING = re.compile(r"^Waiting for (?:confirmation|you)\b", re.I)
+
+
+def classify(summary, body):
+    for text in (str(summary or "").strip(), str(body or "").strip()):
+        if DONE.match(text):
+            return "done"
+        if WAITING.search(text):
+            return "waiting"
+    return None
+
+
+def process_comm(pid):
+    try:
+        with open(f"/proc/{pid}/comm", encoding="utf-8", errors="replace") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def parent_pid(pid):
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as fh:
+            stat = fh.read()
+    except OSError:
+        return 0
+    rest = stat[stat.rfind(")") + 1 :].strip().split()
+    if len(rest) < 2:
+        return 0
+    try:
+        return int(rest[1])
+    except ValueError:
+        return 0
+
+
+def badge_pid(pid):
+    # Foot runs notify-send as a child of the terminal. The agent hook clears
+    # cursor-approval-<ancestor>, and that ancestor is foot, not notify-send.
+    if process_comm(pid) == "notify-send":
+        parent = parent_pid(pid)
+        if parent > 1:
+            return parent
+    return pid
+
+
+def pid_chain(start):
+    chain = []
+    pid = int(start)
+    seen = set()
+    while pid > 1 and pid not in seen:
+        seen.add(pid)
+        try:
+            with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as fh:
+                stat = fh.read()
+        except OSError:
+            break
+        chain.append(pid)
+        rest = stat[stat.rfind(")") + 1 :].strip().split()
+        if len(rest) < 2:
+            break
+        try:
+            pid = int(rest[1])
+        except ValueError:
+            break
+    return chain
+
+
+def mark_waiting(pid):
+    if pid <= 1:
+        return
+    APPROVAL_DIR.mkdir(parents=True, exist_ok=True)
+    (APPROVAL_DIR / str(pid)).touch()
+
+
+def clear_waiting(pid):
+    if pid <= 1:
+        return
+    try:
+        (APPROVAL_DIR / str(pid)).unlink()
+    except OSError:
+        pass
+
+
+def report(session, state, pids):
+    if not session or not state or not pids:
+        return
+    subprocess.Popen(
+        [
+            "omarchy-shell",
+            PLUGIN,
+            "agent",
+            session,
+            state,
+            ",".join(str(pid) for pid in pids),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def pid_alive(pid):
+    try:
+        pid = int(pid)
+        if pid <= 1:
+            return False
+        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as fh:
+            stat = fh.read()
+    except (OSError, TypeError, ValueError):
+        return False
+    rest = stat[stat.rfind(")") + 1 :].strip()
+    return bool(rest) and rest[0] != "Z"
+
+
+def shell_pid_now():
+    global shell_pid
+    if shell_pid and pid_alive(shell_pid):
+        return shell_pid
+    found = 0
+    try:
+        for name in os.listdir("/proc"):
+            if not name.isdigit():
+                continue
+            try:
+                raw = Path(f"/proc/{name}/cmdline").read_bytes()
+            except OSError:
+                continue
+            if b"quickshell" in raw:
+                found = int(name)
+                break
+    except OSError:
+        pass
+    shell_pid = found
+    return found
+
+
+def plugins_stamp():
+    stamp = 0.0
+    paths = [PLUGINS_DIR, SPACES_DIR, SPACES_DIR / "Spaces.qml", SPACES_DIR / "Model.js"]
+    try:
+        paths.extend(p for p in PLUGINS_DIR.iterdir())
+    except OSError:
+        pass
+    for path in paths:
+        try:
+            stamp = max(stamp, path.stat().st_mtime)
+        except OSError:
+            continue
+    return (stamp, shell_pid_now())
+
+
+def parse_last(path):
+    try:
+        line = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    parts = line.split(None, 1)
+    if len(parts) != 2:
+        return None
+    state, csv = parts[0], parts[1]
+    if state not in LIVE_STATES:
+        return None
+    pids = []
+    for chunk in csv.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        try:
+            number = int(chunk)
+        except ValueError:
+            continue
+        if number > 1:
+            pids.append(number)
+    if not pids:
+        return None
+    return state, pids
+
+
+def reannounce_live():
+    working = 0
+    waiting = 0
+    if LAST_DIR.is_dir():
+        for path in LAST_DIR.iterdir():
+            if not path.is_file():
+                continue
+            parsed = parse_last(path)
+            if not parsed:
+                continue
+            state, pids = parsed
+            if not pid_alive(pids[0]):
+                continue
+            report(path.name, state, pids)
+            if state == "waiting":
+                waiting += 1
+            else:
+                working += 1
+    if APPROVAL_DIR.is_dir():
+        for stamp in APPROVAL_DIR.iterdir():
+            if not stamp.is_file():
+                continue
+            try:
+                pid = int(stamp.name)
+            except ValueError:
+                continue
+            if not pid_alive(pid):
+                continue
+            chain = pid_chain(pid)
+            if not chain:
+                continue
+            report(f"cursor-approval-{pid}", "waiting", chain)
+            waiting += 1
+    print(
+        f"spaces-cursor-notify: reannounce working={working} waiting={waiting}",
+        file=sys.stderr,
+    )
+
+
+def spaces_needs_reannounce():
+    """True once, ~0.4s after Spaces/plugins/shell reloaded, and once at start."""
+    global spaces_stamp, reannounce_at
+    now = time.monotonic()
+    current = plugins_stamp()
+    if spaces_stamp is None:
+        spaces_stamp = current
+        reannounce_at = now + 0.4
+        return False
+    if current != spaces_stamp:
+        spaces_stamp = current
+        reannounce_at = now + 0.4
+        print("spaces-cursor-notify: spaces reload detected", file=sys.stderr)
+        return False
+    if reannounce_at and now >= reannounce_at:
+        reannounce_at = 0.0
+        return True
+    return False
+
+
+def lookup_pid(bus, sender):
+    if not sender:
+        return 0
+    try:
+        return int(
+            bus.call_blocking(
+                "org.freedesktop.DBus",
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus",
+                "GetConnectionUnixProcessID",
+                "s",
+                (sender,),
+            )
+        )
+    except dbus.DBusException:
+        return 0
+
+
+def handle_notify(lookup, message):
+    if message.get_interface() != "org.freedesktop.Notifications" or message.get_member() != "Notify":
+        return
+    args = message.get_args_list()
+    if len(args) < 5:
+        return
+    summary, body = str(args[3]), str(args[4])
+    state = classify(summary, body)
+    if not state:
+        return
+    pid = 0
+    if len(args) > 6 and args[6]:
+        try:
+            pid = int(args[6].get("sender-pid", 0))
+        except (TypeError, ValueError):
+            pid = 0
+    pid = badge_pid(pid or lookup_pid(lookup, message.get_sender()))
+    chain = pid_chain(pid)
+    if not chain:
+        print(
+            f"spaces-cursor-notify: {state} from pid {pid} has no process",
+            file=sys.stderr,
+        )
+        return
+    report(f"cursor-approval-{chain[0]}", state, chain)
+    if state == "waiting":
+        mark_waiting(chain[0])
+    print(
+        f"spaces-cursor-notify: {state} pid={chain[0]} summary={summary!r} body={body!r}",
+        file=sys.stderr,
+    )
+
+
+def hypr_agent_windows():
+    try:
+        clients = json.loads(subprocess.check_output(["hyprctl", "clients", "-j"], text=True))
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError):
+        return []
+    if not isinstance(clients, list):
+        return []
+    out = []
+    for client in clients:
+        if client.get("class") != "org.omarchy.agent":
+            continue
+        try:
+            pid = int(client.get("pid") or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        if pid <= 1:
+            continue
+        out.append((pid, str(client.get("title") or "")))
+    return out
+
+
+def scan_titles():
+    live = set()
+    for pid, title in hypr_agent_windows():
+        live.add(pid)
+        waiting = bool(TITLE_WAITING.match(title.split("|", 1)[0].strip()) or TITLE_WAITING.match(title))
+        was = pid in title_waiting_pids
+        if waiting and not was:
+            chain = pid_chain(pid)
+            if not chain:
+                continue
+            title_waiting_pids.add(pid)
+            mark_waiting(pid)
+            report(f"cursor-approval-{pid}", "waiting", chain)
+            print(
+                f"spaces-cursor-notify: waiting pid={pid} title={title!r}",
+                file=sys.stderr,
+            )
+        elif (not waiting) and was:
+            chain = pid_chain(pid)
+            title_waiting_pids.discard(pid)
+            clear_waiting(pid)
+            if chain:
+                report(f"cursor-approval-{pid}", "end", chain)
+            print(
+                f"spaces-cursor-notify: end-wait pid={pid} title={title!r}",
+                file=sys.stderr,
+            )
+    gone = title_waiting_pids - live
+    for pid in gone:
+        title_waiting_pids.discard(pid)
+        clear_waiting(pid)
+        chain = pid_chain(pid)
+        if chain:
+            report(f"cursor-approval-{pid}", "end", chain)
+    return True
+
+
+def tick():
+    try:
+        scan_titles()
+        if spaces_needs_reannounce():
+            reannounce_live()
+    except Exception:
+        traceback.print_exc()
+    return True
+
+
+def main():
+    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    lookup = dbus.SessionBus()
+    monitor = dbus.SessionBus(private=True)
+    dbus.Interface(
+        monitor.get_object("org.freedesktop.DBus", "/org/freedesktop/DBus"),
+        "org.freedesktop.DBus.Monitoring",
+    ).BecomeMonitor(
+        ["type='method_call',interface='org.freedesktop.Notifications',member='Notify'"],
+        dbus.UInt32(0),
+    )
+
+    def on_message(bus, message):
+        try:
+            handle_notify(lookup, message)
+        except Exception:
+            traceback.print_exc()
+        return HANDLER_RESULT_HANDLED
+
+    monitor.add_message_filter(on_message)
+    GLib.timeout_add(400, tick)
+    print("spaces-cursor-notify: watching toasts and titles", file=sys.stderr)
+    GLib.MainLoop().run()
+
+
+if __name__ == "__main__":
+    os.environ.setdefault("PYTHONUNBUFFERED", "1")
+    sys.exit(main() or 0)

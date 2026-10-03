@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.7
+
+- Cursor gold chip survives an Omarchy shell restart. The hook re-asserts
+  `working` on tool events without walking `/proc` again. `bin/spaces-cursor-notify`
+  re-pushes live `working` / `waiting` ~0.4s after Spaces or the shell reloads.
+
 ## 1.3.6
 
 - README documents the Super+Caps Lock bind (`focusAlert`): same filter as

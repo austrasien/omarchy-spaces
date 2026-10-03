@@ -60,7 +60,7 @@ The link points into the installed plugin, so `omarchy plugin update tornikegoma
 
 ### Cursor
 
-`hooks/cursor-hook` reports Cursor CLI (and the Cursor IDE) the same way. Cursor runs hooks from a short-lived worker; the reporter puts `cursor-agent` first in the PID list so Spaces does not clear the gold chip when that worker exits.
+`hooks/cursor-hook` reports Cursor CLI (and the Cursor IDE) the same way. Cursor runs hooks from a short-lived worker; the reporter puts `cursor-agent` first in the PID list so Spaces does not clear the gold chip when that worker exits. Mid-turn tool events re-assert `working` so a shell restart does not leave the chip off. `bin/spaces-cursor-notify` re-pushes live `working` / `waiting` ~0.4s after Spaces reloads (toasts, Foot titles, and `last/`).
 
 To turn it on, link it into Cursor's user hooks folder:
 

@@ -110,6 +110,19 @@ last_probe_alive() {
   [[ ${first:-0} -gt 1 && -r /proc/$first/stat ]]
 }
 
+# Re-push the last working report without walking /proc. Spaces is in-memory:
+# a shell restart drops the gold chip, and last/ still says working so we
+# would otherwise stay silent until the next turn.
+reassert_working() {
+  local id=$1 f line cached
+  f="$LAST_DIR/$(safe_id "$id")"
+  [[ -f $f ]] || return 1
+  line=$(<"$f")
+  cached=${line#working }
+  [[ -n $cached && $cached != "$line" ]] || return 1
+  omarchy-shell tornikegomareli.spaces agent "$id" working "$cached" >/dev/null 2>&1 &
+}
+
 remember() {
   local id=$1 state=$2
   mkdir -p "$LAST_DIR"
@@ -144,14 +157,16 @@ case "$event" in
     ;;
 esac
 
-# Mid-turn tool events: Spaces already shows working. Skip the /proc walk
-# unless the last report's probe PID is dead. Do not clear a waiting badge
-# here: Cursor fires preToolUse / beforeShell while the TUI confirmation
-# card is still up (first-run “allow tools”, Run/Reject). Title watcher
-# in spaces-cursor-notify owns that badge.
+# Mid-turn tool events: skip the /proc walk when the last report's probe
+# PID is still alive. Still re-assert working so a shell restart does not
+# leave the gold chip off. Do not clear a waiting badge here: Cursor fires
+# preToolUse / beforeShell while the TUI confirmation card is still up
+# (first-run “allow tools”, Run/Reject). Title watcher in
+# spaces-cursor-notify owns that badge.
 case "$event" in
   preToolUse|beforeShellExecution|beforeMCPExecution)
     if last_is "$session" working && last_probe_alive "$session"; then
+      reassert_working "$session"
       exit 0
     fi
     ;;
