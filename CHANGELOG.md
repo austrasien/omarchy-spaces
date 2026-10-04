@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.9
+
+- Cursor’s `Cursor is waiting for you` toast no longer lights the red
+  pulse by itself. Cursor sends that text on `stop` (follow-up prompt)
+  as well as on a real approval, which left a desk pulsing after both
+  agents were idle. Waiting still comes from the Foot title
+  (`Waiting for confirmation`) or a specific Approve toast.
+
 ## 1.3.8
 
 - The Framework power/fingerprint ring follows the same alert as Caps

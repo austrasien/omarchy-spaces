@@ -3,10 +3,13 @@
 
 Two signals, because Cursor has no hook for “blocked on the user”:
 
-- Desktop toasts (only when the agent window is unfocused). Titles are often
-  just “Cursor”; the body is “Cursor is waiting for you”.
-- Foot window titles: `Waiting for confirmation` / `Waiting for you` — that
-  is the first-run “allow tools” card, visible even without a toast.
+- Specific unfocused toasts (`Approve command: …`, `Input needed`, …).
+- Foot window titles: `Waiting for confirmation` / `Waiting for you` —
+  the first-run “allow tools” card, visible even without a toast.
+
+Do not treat “Cursor is waiting for you” as approval. Cursor sends that
+same toast on `stop` (your turn / follow-up), which used to leave a
+sticky red pulse on a desk where nobody was asking.
 
 A finished turn is “Done • …” or “Agent complete”.
 
@@ -38,21 +41,33 @@ LAST_DIR = STATE_DIR / "last"
 PLUGINS_DIR = Path.home() / ".config/omarchy/plugins"
 SPACES_DIR = PLUGINS_DIR / "tornikegomareli.spaces"
 LIVE_STATES = {"working", "waiting"}
+HOOK_STATES = {"working", "waiting", "done", "end", "idle"}
+AGENT_CLASSES = {"org.omarchy.agent", "org.omarchy.agent.forge"}
+SKIP_COMMS = {"systemd", "init"}
 
 title_waiting_pids = set()
+toast_waiting_pids = set()
+last_file_seen = {}
 shell_pid = 0
 spaces_stamp = None
 reannounce_at = 0.0
-WAITING = re.compile(
+SPECIFIC_WAITING = re.compile(
     r"(?:"
     r"Approve(?: pending action| terminal command| file edit| file deletion| MCP tool| command:| \d+ file edits)?"
     r"|Input needed"
     r"|Cursor needs your input"
-    r"|Cursor is waiting"
-    r"|waiting for (?:you|confirmation|your)"
-    r"|Waiting for (?:you|confirmation)"
     r"|Autoriser"
     r"|Allow (?:this |the )?(?:agent|command|tool)"
+    r")",
+    re.I,
+)
+# Same wording Cursor uses on `stop` (“your turn”) and on a real first-run
+# allow. Title or a specific Approve toast must confirm it is approval.
+VAGUE_WAITING = re.compile(
+    r"(?:"
+    r"Cursor is waiting"
+    r"|waiting for (?:you|confirmation|your)"
+    r"|Waiting for (?:you|confirmation)"
     r")",
     re.I,
 )
@@ -64,9 +79,25 @@ def classify(summary, body):
     for text in (str(summary or "").strip(), str(body or "").strip()):
         if DONE.match(text):
             return "done"
-        if WAITING.search(text):
+        if SPECIFIC_WAITING.search(text):
             return "waiting"
+        if VAGUE_WAITING.search(text):
+            return "vague"
     return None
+
+
+def title_is_waiting(title):
+    text = str(title or "")
+    head = text.split("|", 1)[0].strip()
+    return bool(TITLE_WAITING.match(head) or TITLE_WAITING.match(text))
+
+
+def should_accept_waiting(kind, *, title_waiting, last_state):
+    if last_state == "done" and not title_waiting:
+        return False
+    if kind == "vague" and not title_waiting:
+        return False
+    return kind in {"waiting", "vague"}
 
 
 def process_comm(pid):
@@ -138,6 +169,19 @@ def clear_waiting(pid):
         (APPROVAL_DIR / str(pid)).unlink()
     except OSError:
         pass
+    toast_waiting_pids.discard(pid)
+    title_waiting_pids.discard(pid)
+
+
+def end_approval(pid, chain=None, reason=""):
+    if pid <= 1:
+        return
+    clear_waiting(pid)
+    pids = chain or pid_chain(pid)
+    if pids:
+        report(f"cursor-approval-{pid}", "end", pids)
+    if reason:
+        print(f"spaces-cursor-notify: end-wait pid={pid} reason={reason}", file=sys.stderr)
 
 
 def report(session, state, pids):
@@ -208,19 +252,9 @@ def plugins_stamp():
     return (stamp, shell_pid_now())
 
 
-def parse_last(path):
-    try:
-        line = path.read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    parts = line.split(None, 1)
-    if len(parts) != 2:
-        return None
-    state, csv = parts[0], parts[1]
-    if state not in LIVE_STATES:
-        return None
+def parse_pids(csv):
     pids = []
-    for chunk in csv.split(","):
+    for chunk in str(csv or "").split(","):
         chunk = chunk.strip()
         if not chunk:
             continue
@@ -230,9 +264,67 @@ def parse_last(path):
             continue
         if number > 1:
             pids.append(number)
+    return pids
+
+
+def parse_last_line(path):
+    try:
+        line = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    parts = line.split(None, 1)
+    if len(parts) != 2:
+        return None
+    state, csv = parts[0], parts[1]
+    if state not in HOOK_STATES:
+        return None
+    pids = parse_pids(csv)
     if not pids:
         return None
     return state, pids
+
+
+def parse_last(path):
+    parsed = parse_last_line(path)
+    if not parsed or parsed[0] not in LIVE_STATES:
+        return None
+    return parsed
+
+
+def distinctive_pids(pids):
+    out = []
+    for pid in pids:
+        try:
+            pid = int(pid)
+        except (TypeError, ValueError):
+            continue
+        if pid <= 1 or process_comm(pid) in SKIP_COMMS:
+            continue
+        out.append(pid)
+    return out
+
+
+def last_state_for_pids(pids):
+    want = set(distinctive_pids(pids))
+    if not want or not LAST_DIR.is_dir():
+        return None
+    best = None
+    for path in LAST_DIR.iterdir():
+        if not path.is_file():
+            continue
+        parsed = parse_last_line(path)
+        if not parsed:
+            continue
+        state, file_pids = parsed
+        if not want.intersection(distinctive_pids(file_pids)):
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if best is None or mtime > best[0]:
+            best = (mtime, state)
+    return None if best is None else best[1]
 
 
 def reannounce_live():
@@ -336,11 +428,24 @@ def handle_notify(lookup, message):
             file=sys.stderr,
         )
         return
-    report(f"cursor-approval-{chain[0]}", state, chain)
-    if state == "waiting":
-        mark_waiting(chain[0])
+    if state == "done":
+        end_approval(chain[0], chain, reason="toast-done")
+        return
+    title_waiting = any(title_is_waiting(title) for wpid, title in hypr_agent_windows() if wpid in chain)
+    last_state = last_state_for_pids(chain)
+    if not should_accept_waiting(state, title_waiting=title_waiting, last_state=last_state):
+        print(
+            f"spaces-cursor-notify: ignore {state} pid={chain[0]} "
+            f"title_waiting={int(title_waiting)} last={last_state or '-'} "
+            f"summary={summary!r} body={body!r}",
+            file=sys.stderr,
+        )
+        return
+    report(f"cursor-approval-{chain[0]}", "waiting", chain)
+    mark_waiting(chain[0])
+    toast_waiting_pids.add(chain[0])
     print(
-        f"spaces-cursor-notify: {state} pid={chain[0]} summary={summary!r} body={body!r}",
+        f"spaces-cursor-notify: waiting pid={chain[0]} summary={summary!r} body={body!r}",
         file=sys.stderr,
     )
 
@@ -354,7 +459,7 @@ def hypr_agent_windows():
         return []
     out = []
     for client in clients:
-        if client.get("class") != "org.omarchy.agent":
+        if client.get("class") not in AGENT_CLASSES:
             continue
         try:
             pid = int(client.get("pid") or 0)
@@ -370,7 +475,7 @@ def scan_titles():
     live = set()
     for pid, title in hypr_agent_windows():
         live.add(pid)
-        waiting = bool(TITLE_WAITING.match(title.split("|", 1)[0].strip()) or TITLE_WAITING.match(title))
+        waiting = title_is_waiting(title)
         was = pid in title_waiting_pids
         if waiting and not was:
             chain = pid_chain(pid)
@@ -384,28 +489,44 @@ def scan_titles():
                 file=sys.stderr,
             )
         elif (not waiting) and was:
-            chain = pid_chain(pid)
-            title_waiting_pids.discard(pid)
-            clear_waiting(pid)
-            if chain:
-                report(f"cursor-approval-{pid}", "end", chain)
-            print(
-                f"spaces-cursor-notify: end-wait pid={pid} title={title!r}",
-                file=sys.stderr,
-            )
-    gone = title_waiting_pids - live
+            end_approval(pid, pid_chain(pid), reason=f"title={title!r}")
+    gone = (title_waiting_pids | toast_waiting_pids) - live
     for pid in gone:
-        title_waiting_pids.discard(pid)
-        clear_waiting(pid)
-        chain = pid_chain(pid)
-        if chain:
-            report(f"cursor-approval-{pid}", "end", chain)
+        end_approval(pid, pid_chain(pid), reason="window-gone")
     return True
+
+
+def reap_done_approvals():
+    if not LAST_DIR.is_dir():
+        return
+    for path in LAST_DIR.iterdir():
+        if not path.is_file():
+            continue
+        parsed = parse_last_line(path)
+        if not parsed:
+            continue
+        state, pids = parsed
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        prev = last_file_seen.get(path.name)
+        last_file_seen[path.name] = (mtime, state)
+        if state != "done":
+            continue
+        if prev and prev == (mtime, state):
+            continue
+        windows = dict(hypr_agent_windows())
+        for pid in distinctive_pids(pids):
+            if pid not in windows or title_is_waiting(windows[pid]):
+                continue
+            end_approval(pid, pid_chain(pid), reason=f"hook-done:{path.name}")
 
 
 def tick():
     try:
         scan_titles()
+        reap_done_approvals()
         if spaces_needs_reannounce():
             reannounce_live()
     except Exception:
@@ -439,6 +560,24 @@ def main():
     GLib.MainLoop().run()
 
 
+def self_test():
+    assert classify("Cursor", "Cursor is waiting for you") == "vague"
+    assert classify("Cursor", "Approve command: echo") == "waiting"
+    assert classify("Done • 3s", "") == "done"
+    assert should_accept_waiting("vague", title_waiting=False, last_state="done") is False
+    assert should_accept_waiting("vague", title_waiting=False, last_state="working") is False
+    assert should_accept_waiting("vague", title_waiting=True, last_state="done") is True
+    assert should_accept_waiting("waiting", title_waiting=False, last_state="done") is False
+    assert should_accept_waiting("waiting", title_waiting=False, last_state="working") is True
+    assert title_is_waiting("Waiting for confirmation")
+    assert title_is_waiting("Waiting for you | extra")
+    assert not title_is_waiting("Shared Workspace Sync")
+    print("spaces-cursor-notify: self-test ok")
+
+
 if __name__ == "__main__":
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
+    if "--self-test" in sys.argv:
+        self_test()
+        raise SystemExit(0)
     sys.exit(main() or 0)
