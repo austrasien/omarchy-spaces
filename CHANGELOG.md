@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.8
+
+- The Framework power/fingerprint ring follows the same alert as Caps
+  Lock: blink for unseen `waiting`, stay lit for unseen `done`, off when
+  nothing is signalling. Disabling Agent status restores the ring to the
+  EC (`auto`). Super+Caps Lock is unchanged.
+
 ## 1.3.7
 
 - Cursor gold chip survives an Omarchy shell restart. The hook re-asserts

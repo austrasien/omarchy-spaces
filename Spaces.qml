@@ -24,6 +24,8 @@ Panel {
   // ------------------------------------------------------------ settings
 
   readonly property var cfg: Model.resolveSettings(root.settings)
+  readonly property bool agentStatusOn: cfg.agentStatus
+  onAgentStatusOnChanged: Qt.callLater(root.syncCapsLock)
 
   function applySetting(delta) {
     var entry = Model.mergedEntry(root.moduleName, root.settings, delta)
@@ -195,12 +197,14 @@ Panel {
     return false
   }
 
-  // Caps Lock follows the pill pulses: blink while a waiting desk is not
-  // the one on screen (red pulse), stay lit while a done desk is not
-  // (accent pulse). Waiting wins. Visiting a desk drops that pulse, so
-  // the LED re-evaluates whatever is left.
+  // Caps Lock and the Framework power/fingerprint ring follow the pill
+  // pulses together: blink while a waiting desk is not on screen (red
+  // pulse), stay lit while a done desk is not (accent pulse). Waiting
+  // wins. Visiting a desk drops that pulse, so the LEDs re-evaluate
+  // whatever is left. Idle = both off. Agent status off = Caps off and
+  // the fingerprint ring back to EC auto (or solid on).
   function capsLedMode() {
-    if (!root.cfg.agentStatus) return "off"
+    if (!root.cfg.agentStatus) return "auto"
     var waiting = false
     var done = false
     for (var k in root.agents) {
@@ -901,6 +905,8 @@ Panel {
     Hyprland.refreshToplevels()
     Qt.callLater(root.syncCapsLock)
   }
+
+  Component.onDestruction: Quickshell.execDetached([root.pluginFile("bin/spaces-caps-blink"), "auto"])
 
   // ------------------------------------------------------------ previews
 

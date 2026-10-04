@@ -20,7 +20,7 @@ Previews follow the monitor's orientation, including portrait displays, and shri
 
 ## Know when your agent needs you
 
-Terminals running Claude Code get a gold chip on the app icon while the agent works, and a pulsing `!` when it needs your input. A workspace waiting on you pulses in the theme urgent colour. When the agent finishes, that workspace pulses in the theme accent until you open it. The Caps Lock LED blinks while a waiting workspace is not on screen (same as the red pulse) and stays lit while a finished workspace is not (same as the accent pulse). Waiting wins. Opening that desk drops the pulse and the LED shows whatever is left (same for Bambu and any other reporter). Super+Caps Lock can jump to that desk (see [Using it](#using-it)). If a reporting process dies without sending `end`, the bar clears its live badge after the next process check, normally within a minute.
+Terminals running Claude Code get a gold chip on the app icon while the agent works, and a pulsing `!` when it needs your input. A workspace waiting on you pulses in the theme urgent colour. When the agent finishes, that workspace pulses in the theme accent until you open it. The Caps Lock LED and, on a Framework laptop, the power/fingerprint ring follow that pulse together: they blink while a waiting workspace is not on screen (same as the red pulse) and stay lit while a finished workspace is not (same as the accent pulse). Waiting wins. Opening that desk drops the pulse and the LEDs show whatever is left (same for Bambu and any other reporter). Idle means both off, so the fingerprint ring is dark unless something is alerting. Super+Caps Lock can jump to that desk (see [Using it](#using-it)). If a reporting process dies without sending `end`, the bar clears its live badge after the next process check, normally within a minute.
 
 <p align="center">
   <img src=".github/assets/film-agent.png" width="100%" alt="A terminal icon on workspace 4 with an orange exclamation badge: the agent needs input" />
@@ -156,7 +156,7 @@ o.bind("SUPER + RIGHT", "Next workspace with a window", spaces .. " right")
 
 `code:21` is the = key, without Shift. The left and right jumps need `jq`.
 
-To jump to the desk the Caps Lock LED is signalling, bind Super+Caps Lock. It uses the same filter as the LED: unseen `waiting` first, then unseen `done`. The smallest numbered workspace wins; the scratchpad only if nothing else is alerting. If the LED is off, the bind does nothing.
+To jump to the desk the Caps Lock LED is signalling, bind Super+Caps Lock. It uses the same filter as the LEDs: unseen `waiting` first, then unseen `done`. The smallest numbered workspace wins; the scratchpad only if nothing else is alerting. If the LEDs are off, the bind does nothing.
 
 On Omarchy, Caps is Compose (`compose:caps`), so the key often arrives as `Multi_key`. Bind both keysyms:
 
