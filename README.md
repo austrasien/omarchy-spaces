@@ -60,7 +60,7 @@ The link points into the installed plugin, so `omarchy plugin update tornikegoma
 
 ### Cursor
 
-`hooks/cursor-hook` reports Cursor CLI (and the Cursor IDE) the same way. Cursor runs hooks from a short-lived worker; the reporter puts `cursor-agent` first in the PID list so Spaces does not clear the gold chip when that worker exits. Mid-turn tool events re-assert `working` so a shell restart does not leave the chip off. `bin/spaces-cursor-notify` re-pushes live `working` / `waiting` ~0.4s after Spaces reloads (specific Approve toasts, Foot titles, and `last/`).
+`hooks/cursor-hook` reports Cursor CLI (and the Cursor IDE) the same way. Cursor runs hooks from a short-lived worker; the reporter puts `cursor-agent` first in the PID list so Spaces does not clear the gold chip when that worker exits. Mid-turn tool events re-assert `working` so a shell restart does not leave the chip off. `bin/spaces-cursor-notify` re-pushes live `working` / `waiting` ~0.4s after Spaces reloads (Foot titles, title-confirmed Approve toasts, and `last/`).
 
 To turn it on, link it into Cursor's user hooks folder:
 
@@ -87,7 +87,7 @@ Then add it to `~/.cursor/hooks.json`:
 }
 ```
 
-A gold chip shows while the agent works; a pulsing `!` shows when Cursor is waiting for approval (`Waiting for confirmation` / `Waiting for you` in the Foot title, or a specific unfocused Approve toast). The vague `Cursor is waiting for you` and `Cursor needs your input` toasts are ignored: the first is also sent when a turn finishes, the second while an unfocused agent is still working. The first-run “allow tools” card uses the title and often no toast.
+A gold chip shows while the agent works; a pulsing `!` shows when Cursor is waiting for approval (`Waiting for confirmation` / `Waiting for you` in the Foot title). Approve toasts are ignored unless that title is already up: Cursor also sends `Approve command: …` for a hook that auto-allows, with no TUI card. The vague `Cursor is waiting for you` and `Cursor needs your input` toasts are ignored: the first is also sent when a turn finishes, the second while an unfocused agent is still working. The first-run “allow tools” card uses the title and often no toast.
 
 ## Install
 

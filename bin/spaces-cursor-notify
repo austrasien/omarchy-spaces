@@ -3,9 +3,12 @@
 
 Two signals, because Cursor has no hook for “blocked on the user”:
 
-- Specific unfocused toasts (`Approve command: …`, `Input needed`, …).
 - Foot window titles: `Waiting for confirmation` / `Waiting for you` —
-  the first-run “allow tools” card, visible even without a toast.
+  the first-run “allow tools” card, and any real Run/Reject card.
+- Specific unfocused toasts (`Approve command: …`, `Input needed`, …)
+  only when that title is already up. Cursor also toasts
+  `Approve command: echo` (and the like) for a hook that auto-allows:
+  no TUI card, tokens still burning. Those must not pulse red.
 
 Do not treat “Cursor is waiting for you” or “Cursor needs your input”
 as approval. The first is also sent on `stop` (your turn / follow-up).
@@ -96,9 +99,10 @@ def title_is_waiting(title):
 
 
 def should_accept_waiting(kind, *, title_waiting, last_state):
-    if last_state == "done" and not title_waiting:
-        return False
-    if kind == "vague" and not title_waiting:
+    # Title is the only proof Cursor is actually blocked. Approve toasts
+    # fire for auto-allowed tools too (`Approve command: echo` while
+    # working). last_state is kept for the call sites / tests.
+    if not title_waiting:
         return False
     return kind in {"waiting", "vague"}
 
@@ -348,6 +352,7 @@ def reannounce_live():
                 waiting += 1
             else:
                 working += 1
+    windows = dict(hypr_agent_windows())
     if APPROVAL_DIR.is_dir():
         for stamp in APPROVAL_DIR.iterdir():
             if not stamp.is_file():
@@ -357,6 +362,8 @@ def reannounce_live():
             except ValueError:
                 continue
             if not pid_alive(pid):
+                continue
+            if not title_is_waiting(windows.get(pid, "")):
                 continue
             chain = pid_chain(pid)
             if not chain:
@@ -496,6 +503,11 @@ def scan_titles():
     gone = (title_waiting_pids | toast_waiting_pids) - live
     for pid in gone:
         end_approval(pid, pid_chain(pid), reason="window-gone")
+    # Auto-allow toasts can mark waiting before the title check; drop
+    # any toast-only wait the title never confirmed.
+    for pid in list(toast_waiting_pids):
+        if pid in live and pid not in title_waiting_pids:
+            end_approval(pid, pid_chain(pid), reason="toast-unconfirmed")
     return True
 
 
@@ -572,7 +584,8 @@ def self_test():
     assert should_accept_waiting("vague", title_waiting=False, last_state="working") is False
     assert should_accept_waiting("vague", title_waiting=True, last_state="done") is True
     assert should_accept_waiting("waiting", title_waiting=False, last_state="done") is False
-    assert should_accept_waiting("waiting", title_waiting=False, last_state="working") is True
+    assert should_accept_waiting("waiting", title_waiting=False, last_state="working") is False
+    assert should_accept_waiting("waiting", title_waiting=True, last_state="working") is True
     assert title_is_waiting("Waiting for confirmation")
     assert title_is_waiting("Waiting for you | extra")
     assert not title_is_waiting("Shared Workspace Sync")

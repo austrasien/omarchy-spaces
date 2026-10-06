@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.11
+
+- Cursor’s `Approve command: …` toast no longer lights the red pulse
+  by itself. The hook auto-allows, Cursor still toasts, and the desk
+  stayed red while the agent kept working. Waiting still comes from
+  the Foot title (`Waiting for confirmation` / `Waiting for you`).
+
 ## 1.3.10
 
 - Cursor’s `Cursor needs your input` toast no longer lights the red
