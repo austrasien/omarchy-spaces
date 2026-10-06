@@ -89,6 +89,31 @@ Then add it to `~/.cursor/hooks.json`:
 
 A gold chip shows while the agent works; a pulsing `!` shows when Cursor is waiting for approval (`Waiting for confirmation` / `Waiting for you` in the Foot title). Approve toasts are ignored unless that title is already up: Cursor also sends `Approve command: …` for a hook that auto-allows, with no TUI card. The vague `Cursor is waiting for you` and `Cursor needs your input` toasts are ignored: the first is also sent when a turn finishes, the second while an unfocused agent is still working. The first-run “allow tools” card uses the title and often no toast.
 
+### Pi
+
+`hooks/pi-extension.ts` is a Pi extension that reports the same way for Foot windows with app-id `org.omarchy.agent.pi`. It listens to `agent_start` / `tool_call` (`working`), `agent_settled` (`done`), and `session_shutdown` (`end`). It also listens to `extension_ui_request` to show `waiting` when a tool asks for confirmation.
+
+To turn it on, link it into Pi’s extensions folder and list it in settings:
+
+```sh
+mkdir -p ~/.pi/agent/extensions
+ln -sfn ~/.config/omarchy/plugins/tornikegomareli.spaces/hooks/pi-extension.ts \
+        ~/.pi/agent/extensions/spaces.ts
+```
+
+In `~/.pi/agent/settings.json`:
+
+```json
+{
+  "extensions": [
+    "~/.pi/agent/extensions/window-title.ts",
+    "~/.pi/agent/extensions/spaces.ts"
+  ]
+}
+```
+
+Restart each Pi session (or `/reload`), run a prompt, and the terminal icon shows a gold chip while it works. The workspace pulses in the theme accent when the turn settles, until you open that workspace.
+
 ## Install
 
 ```sh
@@ -100,7 +125,7 @@ Requirements:
 
 - Omarchy 4 with the Quickshell bar (Hyprland 0.56 or newer)
 - `jq` for the agent hook (installed with Omarchy)
-- Claude Code, OpenCode, or Cursor, only for agent status
+- Claude Code, OpenCode, Cursor, or Pi, only for agent status
 
 Works with the bar on any edge of the screen. Tested on a single monitor.
 
@@ -118,11 +143,12 @@ omarchy plugin remove tornikegomareli.spaces
 omarchy plugin enable omarchy.workspaces   # bring back the built-in switcher
 ```
 
-If you added the agent hooks, the settings key, or the workspace jump keys below, delete those lines from `~/.claude/settings.json`, `~/.cursor/hooks.json`, and `~/.config/hypr/bindings.lua`. If you linked the OpenCode or Cursor reporter, remove the link:
+If you added the agent hooks, the settings key, or the workspace jump keys below, delete those lines from `~/.claude/settings.json`, `~/.cursor/hooks.json`, `~/.pi/agent/settings.json`, and `~/.config/hypr/bindings.lua`. If you linked the OpenCode, Cursor, or Pi reporter, remove the link:
 
 ```sh
 rm ~/.config/opencode/plugins/spaces.js
 rm ~/.cursor/hooks/spaces-agent.sh
+rm ~/.pi/agent/extensions/spaces.ts
 ```
 
 ## Using it
