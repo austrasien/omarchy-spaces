@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.10
+
+- Cursor’s `Cursor needs your input` toast no longer lights the red
+  pulse by itself. Cursor sends it mid-turn on an unfocused working
+  agent (tokens still burning, no confirmation card). Waiting still
+  comes from the Foot title or a specific Approve toast.
+
 ## 1.3.9
 
 - Cursor’s `Cursor is waiting for you` toast no longer lights the red

@@ -7,9 +7,11 @@ Two signals, because Cursor has no hook for “blocked on the user”:
 - Foot window titles: `Waiting for confirmation` / `Waiting for you` —
   the first-run “allow tools” card, visible even without a toast.
 
-Do not treat “Cursor is waiting for you” as approval. Cursor sends that
-same toast on `stop` (your turn / follow-up), which used to leave a
-sticky red pulse on a desk where nobody was asking.
+Do not treat “Cursor is waiting for you” or “Cursor needs your input”
+as approval. The first is also sent on `stop` (your turn / follow-up).
+The second is sent mid-turn while the agent is still burning tokens and
+the window is unfocused — no TUI card, no title change. Both used to
+leave a sticky red pulse on a desk where nobody was asking.
 
 A finished turn is “Done • …” or “Agent complete”.
 
@@ -55,17 +57,18 @@ SPECIFIC_WAITING = re.compile(
     r"(?:"
     r"Approve(?: pending action| terminal command| file edit| file deletion| MCP tool| command:| \d+ file edits)?"
     r"|Input needed"
-    r"|Cursor needs your input"
     r"|Autoriser"
     r"|Allow (?:this |the )?(?:agent|command|tool)"
     r")",
     re.I,
 )
-# Same wording Cursor uses on `stop` (“your turn”) and on a real first-run
-# allow. Title or a specific Approve toast must confirm it is approval.
+# Same wording Cursor uses on `stop` (“your turn”), on an unfocused
+# working turn (“needs your input”), and on a real first-run allow.
+# Title or a specific Approve toast must confirm it is approval.
 VAGUE_WAITING = re.compile(
     r"(?:"
     r"Cursor is waiting"
+    r"|Cursor needs your input"
     r"|waiting for (?:you|confirmation|your)"
     r"|Waiting for (?:you|confirmation)"
     r")",
@@ -562,6 +565,7 @@ def main():
 
 def self_test():
     assert classify("Cursor", "Cursor is waiting for you") == "vague"
+    assert classify("Cursor", "Cursor needs your input") == "vague"
     assert classify("Cursor", "Approve command: echo") == "waiting"
     assert classify("Done • 3s", "") == "done"
     assert should_accept_waiting("vague", title_waiting=False, last_state="done") is False

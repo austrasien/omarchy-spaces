@@ -87,7 +87,7 @@ Then add it to `~/.cursor/hooks.json`:
 }
 ```
 
-A gold chip shows while the agent works; a pulsing `!` shows when Cursor is waiting for approval (`Waiting for confirmation` / `Waiting for you` in the Foot title, or a specific unfocused Approve toast). The vague `Cursor is waiting for you` toast is ignored: Cursor also sends it when a turn finishes. The first-run “allow tools” card uses the title and often no toast.
+A gold chip shows while the agent works; a pulsing `!` shows when Cursor is waiting for approval (`Waiting for confirmation` / `Waiting for you` in the Foot title, or a specific unfocused Approve toast). The vague `Cursor is waiting for you` and `Cursor needs your input` toasts are ignored: the first is also sent when a turn finishes, the second while an unfocused agent is still working. The first-run “allow tools” card uses the title and often no toast.
 
 ## Install
 
