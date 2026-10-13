@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.12
+
+- Meet rooms opened as Brave `--app` windows show the Meet desktop
+  icon again. Chromium puts the room code in `WM_CLASS`, so path-only
+  matching missed launchers that open `meet.google.com/home` and fell
+  back to a letter tile. Same-host launchers are used when no path
+  matches; Gmail account paths stay strict.
+- Agent Pi: `hooks/pi-extension.ts` reports `working` on `tool_call`
+  and `waiting` when a tool shows a confirmation UI
+  (`extension_ui_request`).
+
 ## 1.3.11
 
 - Cursor’s `Approve command: …` toast no longer lights the red pulse

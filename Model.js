@@ -329,6 +329,34 @@ function scoreWebAppExec(exec, hint) {
   return 100 - Math.min(99, execPath.length)
 }
 
+// Path match first (keeps two Gmail accounts apart). If nothing shares the
+// window path — Meet puts the room code in WM_CLASS — fall back to any
+// launcher for the same host; shorter exec paths win.
+function bestWebAppExecIndex(execs, hint) {
+  if (!hint || !execs || execs.length === 0) return -1
+  var best = -1
+  var bestScore = -1
+  for (var i = 0; i < execs.length; i++) {
+    var score = scoreWebAppExec(execs[i], hint)
+    if (score > bestScore) {
+      bestScore = score
+      best = i
+    }
+  }
+  if (bestScore >= 0 || !hint.path) return best
+  best = -1
+  bestScore = -1
+  var hostOnly = { host: hint.host, path: "" }
+  for (var j = 0; j < execs.length; j++) {
+    var hostScore = scoreWebAppExec(execs[j], hostOnly)
+    if (hostScore > bestScore) {
+      bestScore = hostScore
+      best = j
+    }
+  }
+  return best
+}
+
 // Icon candidates scanned from disk: prefer scalable, then the largest raster.
 function iconPathScore(path) {
   var p = String(path || "")
@@ -532,7 +560,8 @@ if (typeof module !== "undefined") {
     workspaceIds: workspaceIds, workspaceLabel: workspaceLabel, appKey: appKey,
     sortWindows: sortWindows, iconItems: iconItems, truncate: truncate,
     focusedLabel: focusedLabel, isBrowserWindow: isBrowserWindow, webAppHost: webAppHost, webAppHint: webAppHint,
-    scoreWebAppExec: scoreWebAppExec, appIdCandidates: appIdCandidates, iconPathScore: iconPathScore,
+    scoreWebAppExec: scoreWebAppExec, bestWebAppExecIndex: bestWebAppExecIndex,
+    appIdCandidates: appIdCandidates, iconPathScore: iconPathScore,
     iconNameFromPath: iconNameFromPath, stepWorkspace: stepWorkspace, mergedEntry: mergedEntry
   }
 }

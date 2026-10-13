@@ -721,16 +721,10 @@ Panel {
 
     var hint = Model.webAppHint(appId)
     if (hint) {
-      var best = null
-      var bestScore = -1
-      for (var j = 0; j < apps.length; j++) {
-        var score = Model.scoreWebAppExec(root.entryExecText(apps[j]), hint)
-        if (score > bestScore) {
-          bestScore = score
-          best = apps[j]
-        }
-      }
-      if (best) return best
+      var execs = []
+      for (var j = 0; j < apps.length; j++) execs.push(root.entryExecText(apps[j]))
+      var pick = Model.bestWebAppExecIndex(execs, hint)
+      if (pick >= 0) return apps[pick]
       return null
     }
 

@@ -113,6 +113,18 @@ test("scoreWebAppExec prefers the longer Gmail path", () => {
   assert.ok(M.scoreWebAppExec(perso, persoHint) > M.scoreWebAppExec(account, persoHint))
 })
 
+test("bestWebAppExecIndex falls back to Meet host when room path mismatches", () => {
+  const hint = M.webAppHint("brave-meet.google.com__nus-izau-cip-Default")
+  const meetHome = 'omarchy-launch-webapp "https://meet.google.com/home?authuser=1&pageId=none"'
+  const chat = "omarchy-launch-webapp https://chat.google.com/u/1/app/home"
+  assert.strictEqual(M.scoreWebAppExec(meetHome, hint), -1)
+  assert.strictEqual(M.bestWebAppExecIndex([chat, meetHome], hint), 1)
+  const gmailHint = M.webAppHint("brave-mail.google.com__mail_u_1_-Default")
+  const account = 'omarchy-launch-webapp "https://mail.google.com/mail/u/1/"'
+  const perso = "omarchy-launch-webapp https://mail.google.com/"
+  assert.strictEqual(M.bestWebAppExecIndex([perso, account], gmailHint), 1)
+})
+
 test("appIdCandidates includes desktop file id", () => {
   const c = M.appIdCandidates("brave-mail.google.com__mail_u_1_-Default")
   assert.ok(c.indexOf("brave-mail.google.com__mail_u_1_-Default.desktop") !== -1)
