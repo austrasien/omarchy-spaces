@@ -17,6 +17,11 @@ import "Model.js" as Model
 // settings. Settings persist inline on this widget's shell.json entry.
 Panel {
   id: root
+  // True while Super is held (set over IPC by the Super key bindings).
+  property bool superHeld: false
+  // Numbers only show if the user turned the setting on, so the bindings
+  // do nothing for anyone who has not opted in.
+  readonly property bool numbersVisible: superHeld && cfg.holdSuperNumbers
   moduleName: "tornikegomareli.spaces"
   ipcTarget: "tornikegomareli.spaces"
   manageIpc: false
@@ -97,6 +102,30 @@ Panel {
   // Workspace focused before the current one, for "click active = go back".
   property int previousWorkspaceId: -1
   property int lastWorkspaceId: -1
+
+  // Workspace at the moment the temporary numbers were shown.
+  // We compare this against Hyprland continuously while Super is held,
+  // because modifier-release bindings are unreliable on Hyprland 0.56.2.
+  property int numbersShownOnWorkspace: -1
+
+  Timer {
+    id: workspaceSwitchWatcher
+    interval: 40
+    repeat: true
+    running: root.superHeld
+    triggeredOnStart: false
+
+    onTriggered: {
+      var current = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
+      if (root.numbersShownOnWorkspace > 0 &&
+          current > 0 &&
+          current !== root.numbersShownOnWorkspace) {
+        root.superHeld = false
+        root.numbersShownOnWorkspace = -1
+      }
+    }
+  }
+
   onCurrentWorkspaceIdChanged: {
     if (root.lastWorkspaceId !== -1 && root.lastWorkspaceId !== root.currentWorkspaceId)
       root.previousWorkspaceId = root.lastWorkspaceId
@@ -654,6 +683,15 @@ Panel {
         scratchpadRefresh.restart()
         faviconDebounce.restart()
         break
+      case "workspace":
+      case "workspacev2":
+        // SUPER + number changes workspace while Super is still held.
+        // Hide the temporary numbers immediately on the workspace event
+        // instead of relying on the Super release event (broken in Hyprland
+        // 0.56.2 after another SUPER binding is used).
+        root.superHeld = false
+        root.numbersShownOnWorkspace = -1
+        break
       case "openwindow":
       case "movewindow":
       case "movewindowv2":
@@ -1027,6 +1065,19 @@ Panel {
 
   // ------------------------------------------------------------ IPC
 
+  function setNumbersHeld(held) {
+    if (held && !root.cfg.holdSuperNumbers) return
+    root.superHeld = held
+    root.numbersShownOnWorkspace = held ? root.currentWorkspaceId : -1
+  }
+
+  // One IPC handler serves every monitor's bar, so relay to all of them.
+  function relayNumbers(held) {
+    var items = root.bar && typeof root.bar.moduleWidgets === "function" ? root.bar.moduleWidgets(root.moduleName) : [root]
+    if (items.indexOf(root) === -1) items = items.concat([root])
+    for (var i = 0; i < items.length; i++) if (items[i] && typeof items[i].setNumbersHeld === "function") items[i].setNumbersHeld(held)
+  }
+
   IpcHandler {
     target: "tornikegomareli.spaces"
 
@@ -1035,6 +1086,8 @@ Panel {
     function show(): void { root.open() }
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
+    function showNumbers(): void { root.relayNumbers(true) }
+    function hideNumbers(): void { root.relayNumbers(false) }
     function peek(workspace: string): string { return root.peek(workspace) ? "ok" : "empty" }
     function focusAlert(): string { return root.focusAlert() ? "ok" : "none" }
     function agent(session: string, state: string, pids: string): void {
@@ -1182,7 +1235,7 @@ Panel {
         }
         readonly property var itemKeys: iconData.items.map(function(item) { return item.key })
         readonly property color textColor: active ? root.activeText() : root.fg
-        readonly property string label: root.spaceLabel(workspaceId, active, root.cfg.labelStyle)
+        readonly property string label: root.spaceLabel(workspaceId, active, root.numbersVisible ? "number" : root.cfg.labelStyle)
         readonly property real pad: Style.space(label === "" ? 3 : root.metrics.pad)
 
         // Appear animation lives on the delegate: positioner add transitions

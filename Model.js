@@ -18,6 +18,7 @@ var DEFAULTS = {
   titleLength: 24,
   activeStyle: "subtle",      // "subtle" | "solid" | "accent"
   labelStyle: "number",       // "number" | "glyph" | "none"
+  holdSuperNumbers: false,    // show workspace numbers while Super is held (needs bindings)
   animations: true,
   animationSpeed: "normal",   // "slow" | "normal" | "fast"
   scrollSwitch: true,
@@ -76,6 +77,7 @@ function resolveSettings(raw) {
     titleLength: clampInt(s.titleLength, 8, 60, d.titleLength),
     activeStyle: oneOf(s.activeStyle, ACTIVE_STYLES, d.activeStyle),
     labelStyle: oneOf(s.labelStyle, LABEL_STYLES, d.labelStyle),
+    holdSuperNumbers: bool(s.holdSuperNumbers, d.holdSuperNumbers),
     animations: bool(s.animations, d.animations),
     animationSpeed: oneOf(s.animationSpeed, SPEEDS, d.animationSpeed),
     scrollSwitch: bool(s.scrollSwitch, d.scrollSwitch),
