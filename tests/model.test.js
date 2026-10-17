@@ -400,6 +400,11 @@ test("resolveSettings reads booleans written as strings by omarchy bar set", () 
   assert.strictEqual(M.resolveSettings({ pillBackground: "nope" }).pillBackground, true)
 })
 
+test("resolveSettings accepts the alert label style", () => {
+  assert.strictEqual(M.resolveSettings({ labelStyle: "alert" }).labelStyle, "alert")
+  assert.strictEqual(M.resolveSettings({ labelStyle: "blink" }).labelStyle, "number")
+})
+
 test("normalizeAgentState accepts only badge states", () => {
   assert.strictEqual(M.normalizeAgentState("waiting"), "waiting")
   assert.strictEqual(M.normalizeAgentState("end"), "")

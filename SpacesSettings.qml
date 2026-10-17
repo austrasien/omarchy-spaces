@@ -167,7 +167,8 @@ Item {
             options: [
               { value: "number", label: "Number" },
               { value: "glyph", label: "Glyph" },
-              { value: "none", label: "None" }
+              { value: "none", label: "None" },
+              { value: "alert", label: "Alerts" }
             ]
           }
 

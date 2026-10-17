@@ -71,7 +71,8 @@
         "options": [
           "number",
           "glyph",
-          "none"
+          "none",
+          "alert"
         ],
         "default": "number"
       },

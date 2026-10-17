@@ -18,7 +18,7 @@ var DEFAULTS = {
   titleLength: 24,
   activeStyle: "subtle",      // "subtle" | "solid" | "accent"
   pillBackground: true,       // quiet fill behind occupied/hovered pills
-  labelStyle: "number",       // "number" | "glyph" | "none"
+  labelStyle: "number",       // "number" | "glyph" | "none" | "alert"
   holdSuperNumbers: false,    // show workspace numbers while Super is held (needs bindings)
   animations: true,
   animationSpeed: "normal",   // "slow" | "normal" | "fast"
@@ -43,7 +43,7 @@ var ACTIVE_CLICKS = ["none", "previous"]
 var SETTINGS_BUTTONS = ["hover", "always", "never"]
 var PREVIEW_SIZES = ["small", "medium", "large"]
 var ACTIVE_STYLES = ["subtle", "solid", "accent"]
-var LABEL_STYLES = ["number", "glyph", "none"]
+var LABEL_STYLES = ["number", "glyph", "none", "alert"]
 var SPEEDS = ["slow", "normal", "fast"]
 
 function clampInt(value, min, max, fallback) {

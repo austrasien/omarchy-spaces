@@ -1221,7 +1221,12 @@ Panel {
         }
         readonly property var itemKeys: iconData.items.map(function(item) { return item.key })
         readonly property color textColor: active ? root.activeText() : root.fg
-        readonly property string label: root.spaceLabel(workspaceId, active, root.numbersVisible ? "number" : root.cfg.labelStyle)
+        // "alert" shows the number only while the desk pulses (waiting,
+        // urgent or done), or when it has no icons to show instead.
+        readonly property string labelStyle: root.numbersVisible ? "number"
+          : root.cfg.labelStyle !== "alert" ? root.cfg.labelStyle
+          : urgent || doneHighlight || !occupied ? "number" : "none"
+        readonly property string label: root.spaceLabel(workspaceId, active, labelStyle)
         readonly property real pad: Style.space(label === "" ? 3 : root.metrics.pad)
 
         // Appear animation lives on the delegate: positioner add transitions
