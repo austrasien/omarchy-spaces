@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1
+
+- README documents the Alerts workspace label, the Pill background
+  setting, and `--json` for boolean settings set from a script.
+
 ## 1.5.0
 
 - "Pill background" setting under Appearance hides the faint fill behind
