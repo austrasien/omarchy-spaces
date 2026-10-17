@@ -847,27 +847,36 @@ Panel {
       if (fav && fav.source)
         return { source: root.iconUrl(fav.source), name: fav.name || item.title }
     }
-    return root.appInfo(item.appId)
+    return root.appInfo(item.appId, item.title)
   }
 
-  // Returns { source, name } for an app id; cached until icons rescan.
-  function appInfo(appId) {
+  // Returns { source, name } for a window; cached until icons rescan. The
+  // title matters for windows the shell itself hosts: they all report
+  // org.quickshell, a NoDisplay entry, while the title names the app inside,
+  // e.g. "Omamail" is omamail.desktop, so the window keeps its own icon.
+  function appInfo(appId, title) {
     root.iconRevision
     var key = Model.appKey(appId)
-    var cached = root.iconCache[key]
+    var label = String(title || "")
+    var cacheKey = label === "" ? key : key + "\n" + label
+    var cached = root.iconCache[cacheKey]
     if (cached) return cached
 
     if (appId === "brave-mail.google.com__mail_u_1_-Default") {
       var askalon = { source: root.iconUrl("askalon-mail"), name: "Askalon Mail" }
-      root.iconCache[key] = askalon
+      root.iconCache[cacheKey] = askalon
       return askalon
     }
 
     var entry = findDesktopEntry(appId)
+    if (entry && entry.noDisplay && label !== "") {
+      var titled = findDesktopEntry(label)
+      if (titled) entry = titled
+    }
     var source = iconUrl(entry && entry.icon ? entry.icon : appId)
     if (source === "" && key !== appId) source = iconUrl(key)
     var info = { source: source, name: entry && entry.name ? String(entry.name) : String(appId || "") }
-    root.iconCache[key] = info
+    root.iconCache[cacheKey] = info
     return info
   }
 
