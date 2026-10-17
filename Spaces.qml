@@ -103,29 +103,6 @@ Panel {
   property int previousWorkspaceId: -1
   property int lastWorkspaceId: -1
 
-  // Workspace at the moment the temporary numbers were shown.
-  // We compare this against Hyprland continuously while Super is held,
-  // because modifier-release bindings are unreliable on Hyprland 0.56.2.
-  property int numbersShownOnWorkspace: -1
-
-  Timer {
-    id: workspaceSwitchWatcher
-    interval: 40
-    repeat: true
-    running: root.superHeld
-    triggeredOnStart: false
-
-    onTriggered: {
-      var current = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
-      if (root.numbersShownOnWorkspace > 0 &&
-          current > 0 &&
-          current !== root.numbersShownOnWorkspace) {
-        root.superHeld = false
-        root.numbersShownOnWorkspace = -1
-      }
-    }
-  }
-
   onCurrentWorkspaceIdChanged: {
     if (root.lastWorkspaceId !== -1 && root.lastWorkspaceId !== root.currentWorkspaceId)
       root.previousWorkspaceId = root.lastWorkspaceId
@@ -674,10 +651,12 @@ Panel {
         root.setUrgent(event.data, true)
         break
       case "activewindowv2":
+        root.hideHeldNumbers()
         root.setUrgent(event.data, false)
         refreshDebounce.restart()
         break
       case "closewindow":
+        root.hideHeldNumbers()
         root.setUrgent(event.data, false)
         refreshDebounce.restart()
         scratchpadRefresh.restart()
@@ -685,14 +664,16 @@ Panel {
         break
       case "workspace":
       case "workspacev2":
-        // SUPER + number changes workspace while Super is still held.
-        // Hide the temporary numbers immediately on the workspace event
-        // instead of relying on the Super release event (broken in Hyprland
-        // 0.56.2 after another SUPER binding is used).
-        root.superHeld = false
-        root.numbersShownOnWorkspace = -1
+      case "openlayer":
+        // The Super release binding can be missed after another Super
+        // shortcut, so also hide the numbers on the next Hyprland event
+        // (workspace switch, launcher/menu opening, window focus/open/close).
+        root.hideHeldNumbers()
         break
       case "openwindow":
+        root.hideHeldNumbers()
+        refreshDebounce.restart()
+        break
       case "movewindow":
       case "movewindowv2":
       case "createworkspacev2":
@@ -1068,7 +1049,10 @@ Panel {
   function setNumbersHeld(held) {
     if (held && !root.cfg.holdSuperNumbers) return
     root.superHeld = held
-    root.numbersShownOnWorkspace = held ? root.currentWorkspaceId : -1
+  }
+
+  function hideHeldNumbers() {
+    if (root.superHeld) root.superHeld = false
   }
 
   // One IPC handler serves every monitor's bar, so relay to all of them.
