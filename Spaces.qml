@@ -144,55 +144,63 @@ Panel {
     return map
   }
 
-  readonly property var agentByPid: {
+  // Every window as { address, pid }, for matching agents to windows.
+  readonly property var agentWindows: {
+    var list = []
+    for (var id in root.workspaceMap) {
+      var windows = root.workspaceMap[id].windows
+      for (var i = 0; i < windows.length; i++)
+        list.push({ address: windows[i].address, pid: windows[i].pid })
+    }
+    return list
+  }
+
+  readonly property var agentByAddress: {
     if (!root.cfg.agentStatus) return ({})
-    var pids = ({})
-    for (var address in root.pidByAddress) if (root.pidByAddress[address]) pids[root.pidByAddress[address]] = true
-    return Model.agentStates(root.agents, pids)
+    return Model.agentWindowStates(root.agents, root.agentWindows)
   }
 
   function agentStateFor(addresses) {
     var best = ""
     var rank = { waiting: 3, done: 2, working: 1 }
     for (var i = 0; i < addresses.length; i++) {
-      var state = root.agentByPid[root.pidByAddress[Model.normalizeAddress(addresses[i])]] || ""
+      var state = root.agentByAddress[Model.normalizeAddress(addresses[i])] || ""
       if (state && (!best || rank[state] > rank[best])) best = state
     }
     return best
   }
 
-  // PID of the window that owns an agent: its nearest ancestor window.
-  function agentWindowPid(agent) {
-    var windowPids = ({})
-    for (var address in root.pidByAddress) windowPids[root.pidByAddress[address]] = true
-    for (var i = 0; i < agent.pids.length; i++) if (windowPids[agent.pids[i]]) return agent.pids[i]
-    return 0
+  // Normalized addresses of the windows showing an agent: its pinned window,
+  // or every window of its nearest ancestor PID when that is ambiguous.
+  function agentAddresses(agent) {
+    return Model.agentAddresses(agent, Model.agentWindowsByPid(root.agentWindows))
   }
 
-  function activeWindowPid() {
+  function activeWindowAddress() {
     var active = Hyprland.activeToplevel
-    if (!active) return 0
-    return root.pidByAddress[Model.normalizeAddress(active.address)] || 0
+    return active ? Model.normalizeAddress(active.address) : ""
   }
 
-  // PIDs of windows on the scratchpad while that desk is the one on screen.
-  function visibleScratchpadPids() {
-    var pids = ({})
-    if (!(root.specialActiveId < 0) || !root.scratchpad || !root.scratchpad.windows) return pids
+  // Addresses of windows on the scratchpad while that desk is the one on screen.
+  function visibleScratchpadAddresses() {
+    var out = ({})
+    if (!(root.specialActiveId < 0) || !root.scratchpad || !root.scratchpad.windows) return out
     var windows = root.scratchpad.windows
-    for (var i = 0; i < windows.length; i++) if (windows[i].pid) pids[windows[i].pid] = true
-    return pids
+    for (var i = 0; i < windows.length; i++) out[Model.normalizeAddress(windows[i].address)] = true
+    return out
   }
 
-  function agentWindowIsInView(windowPid) {
-    if (!windowPid) return false
-    if (windowPid === root.activeWindowPid()) return true
-    var scratchpadPids = root.visibleScratchpadPids()
-    if (scratchpadPids[windowPid]) return true
+  function agentWindowIsInView(agent) {
+    var addresses = root.agentAddresses(agent)
+    if (!addresses.length) return false
+    var active = root.activeWindowAddress()
+    var scratchpad = root.visibleScratchpadAddresses()
+    var current = ({})
     var ws = root.workspaceMap[root.currentWorkspaceId]
-    if (ws && ws.windows) {
-      for (var i = 0; i < ws.windows.length; i++)
-        if (ws.windows[i].pid === windowPid) return true
+    if (ws && ws.windows) for (var w = 0; w < ws.windows.length; w++) current[Model.normalizeAddress(ws.windows[w].address)] = true
+    for (var i = 0; i < addresses.length; i++) {
+      var address = addresses[i]
+      if (address === active || scratchpad[address] || current[address]) return true
     }
     return false
   }
@@ -210,7 +218,7 @@ Panel {
     for (var k in root.agents) {
       var agent = root.agents[k]
       if (!agent) continue
-      if (root.agentWindowIsInView(root.agentWindowPid(agent))) continue
+      if (root.agentWindowIsInView(agent)) continue
       if (agent.state === "waiting") waiting = true
       else if (agent.state === "done") done = true
     }
@@ -223,18 +231,25 @@ Panel {
     Quickshell.execDetached([root.pluginFile("bin/spaces-caps-blink"), root.capsLedMode()])
   }
 
-  function workspaceIdForPid(windowPid) {
-    if (!windowPid) return 0
-    if (root.scratchpad && root.scratchpad.windows) {
-      for (var s = 0; s < root.scratchpad.windows.length; s++)
-        if (root.scratchpad.windows[s].pid === windowPid) return root.scratchpad.id || -1
+  // Desk of an agent's window; the smallest one when its PID is ambiguous.
+  function workspaceIdForAgent(agent) {
+    var addresses = root.agentAddresses(agent)
+    var best = 0
+    for (var a = 0; a < addresses.length; a++) {
+      var found = 0
+      if (root.scratchpad && root.scratchpad.windows) {
+        for (var s = 0; s < root.scratchpad.windows.length; s++)
+          if (Model.normalizeAddress(root.scratchpad.windows[s].address) === addresses[a]) found = root.scratchpad.id || -1
+      }
+      for (var id in root.workspaceMap) {
+        if (found) break
+        var windows = root.workspaceMap[id].windows || []
+        for (var i = 0; i < windows.length; i++)
+          if (Model.normalizeAddress(windows[i].address) === addresses[a]) { found = Number(id); break }
+      }
+      best = root.smallerDesk(best, found)
     }
-    for (var id in root.workspaceMap) {
-      var windows = root.workspaceMap[id].windows || []
-      for (var i = 0; i < windows.length; i++)
-        if (windows[i].pid === windowPid) return Number(id)
-    }
-    return 0
+    return best
   }
 
   // Same filter as the Caps Lock LED: unseen waiting first, then unseen done.
@@ -255,9 +270,8 @@ Panel {
     for (var k in root.agents) {
       var agent = root.agents[k]
       if (!agent) continue
-      var windowPid = root.agentWindowPid(agent)
-      if (root.agentWindowIsInView(windowPid)) continue
-      var ws = root.workspaceIdForPid(windowPid)
+      if (root.agentWindowIsInView(agent)) continue
+      var ws = root.workspaceIdForAgent(agent)
       if (!ws) continue
       if (agent.state === "waiting") waiting = root.smallerDesk(waiting, ws)
       else if (agent.state === "done") done = root.smallerDesk(done, ws)
@@ -282,9 +296,17 @@ Panel {
     }
     var reported = Model.normalizeAgentState(state)
     if (!reported) return
-    var agent = { state: reported, pids: Model.parsePids(pidsCsv) }
+    var pids = Model.parsePids(pidsCsv)
+    var prev = root.agents[session]
+    // Keep the window this agent was pinned to while it still exists; a
+    // single-instance terminal reports one PID for every window, so without a
+    // pin the badge would spill onto its siblings.
+    var address = (prev && prev.address) || ""
+    if (address && root.pidByAddress[address] === undefined) address = ""
+    if (!address) address = Model.agentPinAddress(pids, root.agentWindows, root.activeWindowAddress())
+    var agent = { state: reported, pids: pids, address: address }
     // Finishing on the desk you are looking at needs no done pulse.
-    if (reported === "done" && root.agentWindowIsInView(root.agentWindowPid(agent)))
+    if (reported === "done" && root.agentWindowIsInView(agent))
       agent.state = "idle"
     next[session] = agent
     root.agents = next
@@ -350,8 +372,8 @@ Panel {
     var next = ({})
     for (var k in root.agents) {
       var agent = root.agents[k]
-      if (agent.state === "done" && root.agentWindowIsInView(root.agentWindowPid(agent))) {
-        agent = { state: "idle", pids: agent.pids }
+      if (agent.state === "done" && root.agentWindowIsInView(agent)) {
+        agent = { state: "idle", pids: agent.pids, address: agent.address }
         changed = true
       }
       next[k] = agent
