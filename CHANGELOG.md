@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0
+
+- "Pill background" setting under Appearance hides the faint fill behind
+  occupied and hovered workspaces; the active one keeps its highlight
+  (from upstream 1.2.0, #1)
+- New "Alerts" workspace label: a number shows only on a desk that pulses
+  (waiting, urgent or done), or on an empty desk that would otherwise be
+  blank. Holding Super still shows every number when that option is on.
+- Boolean settings written as strings by `omarchy bar set` without
+  `--json` ("true" / "false") are read instead of falling back to the
+  default.
+
 ## 1.4.0
 
 From upstream 1.2.0–1.4.0:
