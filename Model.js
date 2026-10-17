@@ -296,6 +296,19 @@ function isBrowserWindow(appId) {
   return !!BROWSER_APP_IDS[String(appId || "").toLowerCase()]
 }
 
+// The letter to stand in for an app with no resolvable icon. Prefers the
+// readable tail of a reverse-DNS class, so org.omarchy.herdr reads "H" and not
+// "O" along with everything else sharing that prefix.
+function fallbackLetter(name, appId) {
+  var label = String(name || "")
+  var id = String(appId || "")
+  if (label === "" || label === id) {
+    var parts = id.split(".")
+    label = parts.length > 1 ? parts[parts.length - 1] : id
+  }
+  return label.charAt(0).toUpperCase()
+}
+
 // Chromium-family --app windows use classes like
 // "chrome-web.whatsapp.com__-Default" or "brave-app.hey.com__-Profile_1".
 // Returns the host ("web.whatsapp.com") or "" when the class is not one.
@@ -562,6 +575,7 @@ if (typeof module !== "undefined") {
     focusedLabel: focusedLabel, isBrowserWindow: isBrowserWindow, webAppHost: webAppHost, webAppHint: webAppHint,
     scoreWebAppExec: scoreWebAppExec, bestWebAppExecIndex: bestWebAppExecIndex,
     appIdCandidates: appIdCandidates, iconPathScore: iconPathScore,
-    iconNameFromPath: iconNameFromPath, stepWorkspace: stepWorkspace, mergedEntry: mergedEntry
+    iconNameFromPath: iconNameFromPath, stepWorkspace: stepWorkspace, mergedEntry: mergedEntry,
+    fallbackLetter: fallbackLetter
   }
 }
