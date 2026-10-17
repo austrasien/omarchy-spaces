@@ -1159,7 +1159,7 @@ Panel {
         readonly property var workspace: root.workspaceMap[workspaceId] || ({ id: workspaceId, windows: [] })
         readonly property bool active: workspaceId === root.currentWorkspaceId
         readonly property bool occupied: workspace.windows.length > 0
-        readonly property bool hovered: pillHover.hovered
+        readonly property bool hovered: pillHover.hovered || pillMouse.containsMouse
         onHoveredChanged: root.pillHovered(pill, hovered)
         readonly property bool showApps: Model.showsApps(root.cfg, occupied, active, hovered)
         readonly property bool urgent: {
@@ -1218,9 +1218,14 @@ Panel {
 
         HoverHandler { id: pillHover }
 
+        // Extend the pointer target to the bar edges while keeping the pill inset.
         MouseArea {
           id: pillMouse
           anchors.fill: parent
+          anchors.leftMargin: root.vertical ? -pillFlow.anchors.leftMargin : 0
+          anchors.rightMargin: root.vertical ? -(root.width - root.pillThickness - pillFlow.anchors.leftMargin) : 0
+          anchors.topMargin: root.vertical ? 0 : -pillFlow.anchors.topMargin
+          anchors.bottomMargin: root.vertical ? 0 : -(root.height - root.pillThickness - pillFlow.anchors.topMargin)
           hoverEnabled: true
           acceptedButtons: Qt.LeftButton
           cursorShape: Qt.PointingHandCursor
