@@ -179,6 +179,10 @@ Settings are organised into App icons, Windows, Appearance, Workspaces, Previews
 
 Use Tab / Shift+Tab to move through controls and Enter / Space to activate them. On sliders, use Left / Right to adjust by one, or Home / End for the minimum or maximum. Reset to defaults asks for confirmation before resetting all sections.
 
+Workspace label (Appearance) picks what each pill shows next to its icons: Number, Glyph (a dot on the active workspace), None, or Alerts. Alerts shows a number only on a desk that pulses, so the numbers point at what needs you: an agent waiting or finished, or an urgent window. An empty desk keeps its number, since it has no icons to show. Pair it with [Show numbers while holding Super](#show-numbers-while-holding-super) to see every number before Super + a digit.
+
+Pill background (Appearance) controls the faint fill behind occupied and hovered workspaces. Turn it off for icons and numbers straight on the bar; the active workspace keeps its highlight.
+
 Super+= opens the first regular workspace with no windows (the scratchpad does not count). Super+Left and Super+Right jump to the nearest workspace that already has a window. If there is none in that direction, nothing happens. On Omarchy these keys used to resize or focus a window, so unbind them first. Add this to `~/.config/hypr/bindings.lua`:
 
 ```lua
@@ -219,16 +223,20 @@ Settings can also be set from a script:
 
 ```sh
 omarchy bar set tornikegomareli.spaces showApps all
+omarchy bar set tornikegomareli.spaces labelStyle alert
+omarchy bar set tornikegomareli.spaces pillBackground false --json
 ```
+
+Without `--json` the value is stored as a string; Spaces reads `"true"` and `"false"` as booleans either way.
 
 ### Show numbers while holding Super
 
-Off by default. When on, the workspace numbers appear while you hold Super, so you can see which workspace an app is on even if labels are set to None or Glyph. They hide again when you release Super or switch workspace.
+Off by default. When on, the workspace numbers appear while you hold Super, so you can see which workspace an app is on even if labels are set to None, Glyph or Alerts. They hide again when you release Super or switch workspace.
 
 1. Turn it on under Settings → Workspaces → Show numbers while holding Super, or from a script:
 
    ```sh
-   omarchy bar set tornikegomareli.spaces holdSuperNumbers true
+   omarchy bar set tornikegomareli.spaces holdSuperNumbers true --json
    ```
 
 2. Spaces cannot see a held key by itself, so add these lines to `~/.config/hypr/bindings.lua`:
