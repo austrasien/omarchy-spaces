@@ -56,8 +56,13 @@ function oneOf(value, allowed, fallback) {
   return allowed.indexOf(String(value)) !== -1 ? String(value) : fallback
 }
 
+// `omarchy bar set <id> <key> true` stores the string "true" unless --json is
+// passed, so accept the two spellings alongside real booleans.
 function bool(value, fallback) {
-  return typeof value === "boolean" ? value : fallback
+  if (typeof value === "boolean") return value
+  if (value === "true") return true
+  if (value === "false") return false
+  return fallback
 }
 
 // Normalizes a raw shell.json entry into a complete, valid settings object.

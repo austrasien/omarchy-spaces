@@ -392,6 +392,14 @@ test("agentPinAddress pins an ambiguous PID to the focused window", () => {
   assert.strictEqual(M.agentPinAddress([9, 10], windows, "0xa"), "")
 })
 
+test("resolveSettings reads booleans written as strings by omarchy bar set", () => {
+  assert.strictEqual(M.resolveSettings({ pillBackground: "false" }).pillBackground, false)
+  assert.strictEqual(M.resolveSettings({ pillBackground: "true" }).pillBackground, true)
+  assert.strictEqual(M.resolveSettings({ pillBackground: false }).pillBackground, false)
+  assert.strictEqual(M.resolveSettings({ holdSuperNumbers: "true" }).holdSuperNumbers, true)
+  assert.strictEqual(M.resolveSettings({ pillBackground: "nope" }).pillBackground, true)
+})
+
 test("normalizeAgentState accepts only badge states", () => {
   assert.strictEqual(M.normalizeAgentState("waiting"), "waiting")
   assert.strictEqual(M.normalizeAgentState("end"), "")
