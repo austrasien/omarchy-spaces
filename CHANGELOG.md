@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.13
+
+- `hooks/claude-agent-hook`: event-driven Claude Code reporter (one
+  command for every hook, `claude` first in the PID list). A
+  `SubagentStop` after `Stop` no longer turns a finished turn back into
+  `working`: background subagents often stop after the parent, which
+  left the gold chip on and the desk never pulsed.
+
 ## 1.3.12
 
 - Meet rooms opened as Brave `--app` windows show the Meet desktop
