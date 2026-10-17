@@ -224,6 +224,8 @@ Panel {
     for (var k in root.agents) {
       var agent = root.agents[k]
       if (!agent) continue
+      // No window (e.g. a Claude Desktop session): no desk to open, so no LED.
+      if (!root.agentAddresses(agent).length) continue
       if (root.agentWindowIsInView(agent)) continue
       if (agent.state === "waiting") waiting = true
       else if (agent.state === "done") done = true

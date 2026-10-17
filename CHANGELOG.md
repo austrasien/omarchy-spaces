@@ -24,6 +24,9 @@ From upstream 1.2.0–1.4.0:
 - Opt-in: show workspace numbers while holding Super, for the None or
   Glyph label styles. Needs two Hyprland bindings, listed in the README
   (#16, #21)
+- The Caps Lock LED and the Framework ring ignore an agent with no
+  window (a Claude Desktop session, say): there is no desk to open, and
+  Super+Caps Lock already skipped it.
 
 ## 1.3.14
 
