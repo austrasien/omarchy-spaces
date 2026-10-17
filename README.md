@@ -40,6 +40,18 @@ To turn it on, add these hooks to `~/.claude/settings.json`:
 }
 ```
 
+`hooks/claude-agent-hook` is an alternative that takes no argument: it reads the event from the hook input, so every hook runs the same command. It puts the `claude` process first in the PID list (the chip survives the hook's short-lived shell), shows `!` only for `permission_prompt` notifications, and ignores a `SubagentStop` that arrives after `Stop` (background subagents), so a finished turn does not go back to working. Link it and point every hook at it, including `PreToolUse` and `SubagentStop`:
+
+```sh
+mkdir -p ~/.claude/hooks
+ln -sfn ~/.config/omarchy/plugins/tornikegomareli.spaces/hooks/claude-agent-hook \
+        ~/.claude/hooks/spaces-agent.sh
+```
+
+```json
+{ "type": "command", "command": "~/.claude/hooks/spaces-agent.sh" }
+```
+
 Other agents can report the same way: `omarchy-shell tornikegomareli.spaces agent <session> <working|waiting|done|end> <pids>`, where `<pids>` lists the agent's process and its parents, comma-separated.
 
 ### OpenCode
