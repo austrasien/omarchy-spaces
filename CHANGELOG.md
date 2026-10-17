@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.4.0
+
+From upstream 1.2.0–1.4.0:
+
+- Sharper icons: decoded at 2x on whole-number scales such as 1 and 2,
+  3x on fractional ones, without mipmaps, and the mono style keeps that
+  detail. An app with no icon shows the first letter of its own name, so
+  `org.omarchy.herdr` reads "H", not "O" (#10, #19)
+- A workspace that shows a single icon no longer highlights it as
+  focused (#12, #13)
+- Long titles no longer cut an emoji or an accented letter in half, and
+  Korean, Japanese and Chinese characters count double toward the title
+  length (#17)
+- An agent badge stays on its own window when several windows share one
+  process (Ghostty single-instance, `foot --server`). The Caps Lock LED,
+  Super+Caps Lock and the done acknowledgement follow the same window
+  (#22, rewritten on this fork's agent model)
+- Windows the shell itself hosts, such as Omamail, show their own app
+  icon and keep their own item (#23)
+- Pushing the pointer to the screen edge still hovers and selects the
+  workspace under it (#25)
+- Opt-in: show workspace numbers while holding Super, for the None or
+  Glyph label styles. Needs two Hyprland bindings, listed in the README
+  (#16, #21)
+
 ## 1.3.14
 
 - Window titles in the bar and in previews render as plain text, so a
