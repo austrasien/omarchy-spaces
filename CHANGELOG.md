@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.14
+
+- Window titles in the bar and in previews render as plain text, so a
+  title with markup can no longer load remote images in the shell
+  (from upstream 1.2.0).
+- The done and urgent pulses and the waiting `!` step a few times a
+  second instead of running as infinite animations, which repainted the
+  whole bar every frame. A done pulse lasts until the desk is opened, so
+  the bar never idled while one was showing (idea from upstream 1.3.0).
+
 ## 1.3.13
 
 - `hooks/claude-agent-hook`: event-driven Claude Code reporter (one
