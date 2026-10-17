@@ -1249,9 +1249,11 @@ Panel {
           anchors.fill: parent
           radius: root.pillRadius
           color: pill.active ? root.activeFill()
-            : pill.hovered ? Util.alpha(root.fg, 0.12)
-            : (pill.occupied && !pill.urgent && !pill.doneHighlight) ? Util.alpha(root.fg, 0.06)
-            : "transparent"
+            : root.cfg.pillBackground
+              ? (pill.hovered ? Util.alpha(root.fg, 0.12)
+                : (pill.occupied && !pill.urgent && !pill.doneHighlight) ? Util.alpha(root.fg, 0.06)
+                : "transparent")
+              : "transparent"
           Behavior on color { enabled: root.fastDur > 0; ColorAnimation { duration: root.fastDur } }
         }
 
