@@ -1011,39 +1011,31 @@ Panel {
     }
   }
 
-  // Glow behind a workspace pill. Restart when the opacity range changes:
-  // SequentialAnimation from/to are sampled when the run starts, so a live
-  // bind is not enough (a colour edit can otherwise keep the previous pulse).
+  // Eight-step sine wave, 0 → 1 → 0, for stepped pulses.
+  function pulseWave(phase) { return (1 - Math.cos(phase * Math.PI / 4)) / 2 }
+
+  // Glow behind a workspace pill. Stepped (about 6 repaints/s), not an
+  // infinite animation: that repaints the whole bar every frame while a desk
+  // pulses, and a done pulse lasts until the desk is opened. The opacity is
+  // bound, so a colour edit applies on the next step.
   component PulseFill: Rectangle {
     id: glow
     property bool active: false
     property color fill: "transparent"
+    property int phase: 0
 
     anchors.fill: parent
     radius: root.pillRadius
     color: fill
-    opacity: 0
+    opacity: active ? root.pulseLo + (root.pulseHi - root.pulseLo) * root.pulseWave(phase) : 0
     visible: active
 
-    SequentialAnimation on opacity {
-      id: pulse
+    Timer {
       running: glow.active
-      loops: Animation.Infinite
-      NumberAnimation { from: root.pulseLo; to: root.pulseHi; duration: 700; easing.type: Easing.InOutSine }
-      NumberAnimation { from: root.pulseHi; to: root.pulseLo; duration: 700; easing.type: Easing.InOutSine }
-    }
-
-    function restartPulse() {
-      if (!glow.active) return
-      pulse.restart()
-    }
-
-    onActiveChanged: if (active) Qt.callLater(restartPulse)
-
-    Connections {
-      target: root
-      function onPulseLoChanged() { glow.restartPulse() }
-      function onPulseHiChanged() { glow.restartPulse() }
+      interval: 175
+      repeat: true
+      onTriggered: glow.phase = (glow.phase + 1) % 8
+      onRunningChanged: glow.phase = 0
     }
   }
 
@@ -1377,12 +1369,15 @@ Panel {
                           font.bold: true
                         }
 
-                        SequentialAnimation on scale {
+                        // Stepped like PulseFill: same 1.04s beat, ~8 repaints/s.
+                        property int phase: 0
+                        scale: appIcon.agentState === "waiting" ? 1 + 0.3 * root.pulseWave(phase) : 1
+                        Timer {
                           running: appIcon.agentState === "waiting"
-                          loops: Animation.Infinite
-                          alwaysRunToEnd: true
-                          NumberAnimation { from: 1; to: 1.3; duration: 520; easing.type: Easing.InOutSine }
-                          NumberAnimation { from: 1.3; to: 1; duration: 520; easing.type: Easing.InOutSine }
+                          interval: 130
+                          repeat: true
+                          onTriggered: agentBadge.phase = (agentBadge.phase + 1) % 8
+                          onRunningChanged: agentBadge.phase = 0
                         }
                       }
 
