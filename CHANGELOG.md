@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.2
+
+- Holding Super keeps the workspace numbers on screen while the focused
+  window animates its title (a spinner in a terminal title). Hyprland
+  re-sends `activewindowv2` on every title change, which hid the numbers
+  within half a second; only a real focus change hides them now.
+
 ## 1.5.1
 
 - README documents the Alerts workspace label, the Pill background
