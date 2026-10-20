@@ -19,6 +19,8 @@ Panel {
   id: root
   // True while Super is held (set over IPC by the Super key bindings).
   property bool superHeld: false
+  // Last focused window address, to tell a focus change from a title repeat.
+  property string lastActiveAddress: ""
   // Numbers only show if the user turned the setting on, so the bindings
   // do nothing for anyone who has not opted in.
   readonly property bool numbersVisible: superHeld && cfg.holdSuperNumbers
@@ -653,7 +655,11 @@ Panel {
         root.setUrgent(event.data, true)
         break
       case "activewindowv2":
-        root.hideHeldNumbers()
+        // Hyprland re-sends this on every title change of the focused
+        // window (spinners in terminal titles), so only a real focus
+        // change hides the held numbers.
+        if (event.data !== root.lastActiveAddress) root.hideHeldNumbers()
+        root.lastActiveAddress = event.data
         root.setUrgent(event.data, false)
         refreshDebounce.restart()
         break
