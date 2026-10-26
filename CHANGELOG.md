@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.3
+
+- A closed window no longer stays in its workspace pill until the shell
+  restarts. Quickshell's `refreshToplevels()` can re-create a window that
+  closed while its `j/clients` request was in flight
+  (quickshell-mirror/quickshell#1268); windows Hyprland reported closed
+  are now skipped.
+
 ## 1.5.2
 
 - Holding Super keeps the workspace numbers on screen while the focused
