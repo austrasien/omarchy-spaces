@@ -40,8 +40,9 @@ from dbus.lowlevel import HANDLER_RESULT_HANDLED
 from gi.repository import GLib
 
 PLUGIN = "tornikegomareli.spaces"
-# Every plugin showing agent state gets each report: Spaces and the minimap.
-AGENT_PLUGINS = (PLUGIN, "austraz.minimap")
+# Agent state goes to the minimap (Spaces is disabled; add PLUGIN back to
+# report to it again).
+AGENT_PLUGINS = ("austraz.minimap",)
 STATE_DIR = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "spaces-agent"
 APPROVAL_DIR = STATE_DIR / "approval"
 LAST_DIR = STATE_DIR / "last"
