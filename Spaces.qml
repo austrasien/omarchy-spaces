@@ -126,6 +126,20 @@ Panel {
     root.urgentAddresses = next
   }
 
+  // Addresses (normalized) Hyprland reported closed. Quickshell's
+  // refreshToplevels() only adds: a j/clients reply taken before a close but
+  // parsed after it re-creates the window, and no closewindow follows.
+  property var closedAddresses: ({})
+
+  function setClosed(address, closed) {
+    var key = Model.normalizeAddress(address)
+    if (key === "" || (!!root.closedAddresses[key]) === closed) return
+    var next = ({})
+    for (var k in root.closedAddresses) if (k !== key) next[k] = true
+    if (closed) next[key] = true
+    root.closedAddresses = next
+  }
+
   function isUrgent(address) {
     return root.cfg.urgentHighlight && !!root.urgentAddresses[Model.normalizeAddress(address)]
   }
@@ -424,6 +438,7 @@ Panel {
     root.revision
     var values = Hyprland.workspaces.values
     var activeToplevel = Hyprland.activeToplevel
+    var closed = root.closedAddresses
     var perMonitor = cfg.perMonitor && root.monitor !== null
     var map = ({})
 
@@ -439,6 +454,7 @@ Panel {
       var toplevels = ws.toplevels.values
       for (var j = 0; j < toplevels.length; j++) {
         var tl = toplevels[j]
+        if (closed[Model.normalizeAddress(tl.address)]) continue
         var ipc = tl.lastIpcObject || {}
         windows.push({
           address: String(tl.address),
@@ -666,6 +682,7 @@ Panel {
       case "closewindow":
         root.hideHeldNumbers()
         root.setUrgent(event.data, false)
+        root.setClosed(event.data, true)
         refreshDebounce.restart()
         scratchpadRefresh.restart()
         faviconDebounce.restart()
@@ -679,6 +696,8 @@ Panel {
         root.hideHeldNumbers()
         break
       case "openwindow":
+        // Hyprland addresses are pointers and can be reused.
+        root.setClosed(String(event.data).split(",")[0], false)
         root.hideHeldNumbers()
         refreshDebounce.restart()
         break
