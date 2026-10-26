@@ -40,6 +40,8 @@ from dbus.lowlevel import HANDLER_RESULT_HANDLED
 from gi.repository import GLib
 
 PLUGIN = "tornikegomareli.spaces"
+# Every plugin showing agent state gets each report: Spaces and the minimap.
+AGENT_PLUGINS = (PLUGIN, "austraz.minimap")
 STATE_DIR = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "spaces-agent"
 APPROVAL_DIR = STATE_DIR / "approval"
 LAST_DIR = STATE_DIR / "last"
@@ -194,19 +196,20 @@ def end_approval(pid, chain=None, reason=""):
 def report(session, state, pids):
     if not session or not state or not pids:
         return
-    subprocess.Popen(
-        [
-            "omarchy-shell",
-            PLUGIN,
-            "agent",
-            session,
-            state,
-            ",".join(str(pid) for pid in pids),
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    for plugin in AGENT_PLUGINS:
+        subprocess.Popen(
+            [
+                "omarchy-shell",
+                plugin,
+                "agent",
+                session,
+                state,
+                ",".join(str(pid) for pid in pids),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
 
 
 def pid_alive(pid):
