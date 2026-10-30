@@ -50,7 +50,7 @@ PLUGINS_DIR = Path.home() / ".config/omarchy/plugins"
 SPACES_DIR = PLUGINS_DIR / "tornikegomareli.spaces"
 LIVE_STATES = {"working", "waiting"}
 HOOK_STATES = {"working", "waiting", "done", "end", "idle"}
-AGENT_CLASSES = {"org.omarchy.agent", "org.omarchy.agent.forge"}
+AGENT_CLASSES = {"org.omarchy.agent", "org.omarchy.agent.cursor", "org.omarchy.agent.forge"}
 SKIP_COMMS = {"systemd", "init"}
 
 title_waiting_pids = set()
